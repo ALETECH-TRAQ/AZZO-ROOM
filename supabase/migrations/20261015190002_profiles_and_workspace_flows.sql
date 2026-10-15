@@ -1,4 +1,4 @@
--- Apply after 001_schema_inicial.sql using the Supabase SQL editor / CLI.
+-- Apply after 20261015190001_schema_inicial.sql using the Supabase SQL editor / CLI.
 create table public.profiles (
  user_id uuid primary key references auth.users(id) on delete cascade,
  display_name text not null default '' check(char_length(display_name)<=80),

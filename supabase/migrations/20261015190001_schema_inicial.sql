@@ -1,4 +1,4 @@
--- Esquema inicial de referência para a fase autenticada. NÃO ATIVADO NO STARTER.
+-- Esquema inicial de referência para a fase autenticada.
 -- Revisar junto ao Codex antes de aplicar em projeto real; back-end deve checar as permissões também.
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;

@@ -6,6 +6,6 @@
 **/.env.*
 artifacts
 docs
-supabase
+supabase/.temp
 test-results
 playwright-report

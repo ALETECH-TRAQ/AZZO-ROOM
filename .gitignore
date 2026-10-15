@@ -14,5 +14,6 @@ playwright-report/
 
 .vercel/
 .supabase/
+supabase/.temp/
 .deploy-auth/
 deploy-state*.json

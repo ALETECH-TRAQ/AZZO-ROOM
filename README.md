@@ -38,9 +38,9 @@ No processo do game server: `SUPABASE_URL` e `SUPABASE_ANON_KEY`, correspondente
 
 Aplique, nesta ordem, no seu projeto Supabase:
 
-1. `supabase/migrations/001_schema_inicial.sql`
-2. `supabase/migrations/002_profiles_and_workspace_flows.sql`
-3. `supabase/migrations/003_runtime_grants.sql`
+1. `supabase/migrations/20261015190001_schema_inicial.sql`
+2. `supabase/migrations/20261015190002_profiles_and_workspace_flows.sql`
+3. `supabase/migrations/20261015190003_runtime_grants.sql`
 
 Configure a URL do site e o redirecionamento `/auth/callback` no Supabase Auth. Habilite confirmação de e-mail e envio de recuperação. O cadastro autenticado leva a `/onboarding`, que cria um escritório ou aceita um convite válido; escrever o nome de uma empresa não concede acesso.
 

@@ -8,6 +8,6 @@ for attempt in $(seq 1 30); do
   if docker exec "$name" pg_isready -U postgres >/dev/null 2>&1; then break; fi
   sleep 1
 done
-for file in tests/db-bootstrap.sql supabase/migrations/001_schema_inicial.sql supabase/migrations/002_profiles_and_workspace_flows.sql supabase/migrations/003_runtime_grants.sql tests/db-isolation.sql; do
+for file in tests/db-bootstrap.sql supabase/migrations/20261015190001_schema_inicial.sql supabase/migrations/20261015190002_profiles_and_workspace_flows.sql supabase/migrations/20261015190003_runtime_grants.sql tests/db-isolation.sql; do
   docker exec -i "$name" psql -U postgres -v ON_ERROR_STOP=1 < "$file"
 done
