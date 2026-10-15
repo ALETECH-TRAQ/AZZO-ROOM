@@ -380,12 +380,15 @@ function Controller({
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0.55);
   const rotatingCamera = useRef(false);
+  const cameraOrientationDirty = useRef(true);
   const desired = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
+  const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
   modeRef.current = mode;
 
   useEffect(() => {
     if (mode !== "third") rotatingCamera.current = false;
+    cameraOrientationDirty.current = true;
   }, [mode]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -444,6 +447,7 @@ function Controller({
         0.18,
         1.2,
       );
+      cameraOrientationDirty.current = true;
     };
     const pointerUp = (event: PointerEvent) => {
       if (event.button !== 2) return;
@@ -520,25 +524,32 @@ function Controller({
     }
     const p = local.current;
     target.set(p.x, 1.1, p.z);
-    if (mode === "iso") desired.set(p.x + 11, 15, p.z + 12);
+    focus.lerp(target, 1 - Math.exp(-4.1 * dt));
+    if (mode === "iso") desired.set(focus.x + 11, 15, focus.z + 12);
     else {
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
-        THREE.MathUtils.clamp(
-          p.x - Math.sin(cameraYaw.current) * horizontalDistance,
-          -12.8,
-          12.8,
-        ),
-        target.y + 5.7 * Math.sin(cameraPitch.current),
-        THREE.MathUtils.clamp(
-          p.z - Math.cos(cameraYaw.current) * horizontalDistance,
-          -8.2,
-          8.3,
-        ),
+        focus.x - Math.sin(cameraYaw.current) * horizontalDistance,
+        focus.y + 5.7 * Math.sin(cameraPitch.current),
+        focus.z - Math.cos(cameraYaw.current) * horizontalDistance,
       );
     }
-    camera.position.lerp(desired, 1 - Math.exp(-4.1 * dt));
-    camera.lookAt(target);
+    camera.position.copy(desired);
+    if (cameraOrientationDirty.current) {
+      camera.up.set(0, 1, 0);
+      if (mode === "iso") {
+        camera.lookAt(focus);
+        camera.rotation.z = 0;
+      } else {
+        camera.rotation.order = "YXZ";
+        camera.rotation.set(
+          -cameraPitch.current,
+          Math.PI + cameraYaw.current,
+          0,
+        );
+      }
+      cameraOrientationDirty.current = false;
+    }
     lastPublish.current += dt;
     if (lastPublish.current >= 0.1) {
       onPosition({ ...p });
