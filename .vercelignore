@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.*
+artifacts
+docs
+supabase
+test-results
+playwright-report

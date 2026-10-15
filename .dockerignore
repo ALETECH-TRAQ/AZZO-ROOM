@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.*
+**/*.log
+**/*.tsbuildinfo
+artifacts
+docs
+supabase
+test-results
+playwright-report
+.vercel
