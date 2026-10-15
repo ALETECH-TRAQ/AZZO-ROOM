@@ -384,6 +384,8 @@ function Controller({
   const desired = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
   const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
+  const cameraForward = useMemo(() => new THREE.Vector3(), []);
+  const cameraRight = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
 
   useEffect(() => {
@@ -485,12 +487,13 @@ function Controller({
     let dx = inputX;
     let dz = inputZ;
     if (mode === "third") {
-      const forwardX = Math.sin(cameraYaw.current);
-      const forwardZ = Math.cos(cameraYaw.current);
-      const rightX = Math.cos(cameraYaw.current);
-      const rightZ = -Math.sin(cameraYaw.current);
-      dx = forwardX * -inputZ + rightX * inputX;
-      dz = forwardZ * -inputZ + rightZ * inputX;
+      camera.getWorldDirection(cameraForward);
+      cameraForward.y = 0;
+      cameraForward.normalize();
+      // Three.js cameras look down -Z, so screen-right is forward × up.
+      cameraRight.set(-cameraForward.z, 0, cameraForward.x);
+      dx = cameraForward.x * -inputZ + cameraRight.x * inputX;
+      dz = cameraForward.z * -inputZ + cameraRight.z * inputX;
     }
     if (dx || dz) {
       const n = Math.hypot(dx, dz);
