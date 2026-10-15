@@ -371,13 +371,22 @@ function Controller({
   avatar: AvatarConfig | null;
   onPosition: (position: Position) => void;
 }) {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const keys = useRef(new Set<string>());
   const local = useRef<Position>({ x: 0, z: 5, yaw: 0 });
   const model = useRef<THREE.Group>(null);
   const lastPublish = useRef(0);
+  const modeRef = useRef(mode);
+  const cameraYaw = useRef(0);
+  const cameraPitch = useRef(0.55);
+  const rotatingCamera = useRef(false);
   const desired = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
+  modeRef.current = mode;
+
+  useEffect(() => {
+    if (mode !== "third") rotatingCamera.current = false;
+  }, [mode]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (
@@ -414,15 +423,71 @@ function Controller({
       window.removeEventListener("blur", clear);
     };
   }, []);
+  useEffect(() => {
+    const dom = gl.domElement;
+    const sensitivity = 0.006;
+    const stopRotating = () => {
+      rotatingCamera.current = false;
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 2 || modeRef.current !== "third") return;
+      event.preventDefault();
+      rotatingCamera.current = true;
+      dom.setPointerCapture?.(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!rotatingCamera.current || modeRef.current !== "third") return;
+      event.preventDefault();
+      cameraYaw.current -= event.movementX * sensitivity;
+      cameraPitch.current = THREE.MathUtils.clamp(
+        cameraPitch.current - event.movementY * sensitivity,
+        0.18,
+        1.2,
+      );
+    };
+    const pointerUp = (event: PointerEvent) => {
+      if (event.button !== 2) return;
+      stopRotating();
+      if (dom.hasPointerCapture?.(event.pointerId)) {
+        dom.releasePointerCapture?.(event.pointerId);
+      }
+    };
+    const contextMenu = (event: MouseEvent) => event.preventDefault();
+    dom.addEventListener("pointerdown", pointerDown);
+    dom.addEventListener("pointermove", pointerMove);
+    window.addEventListener("pointerup", pointerUp);
+    window.addEventListener("pointercancel", stopRotating);
+    window.addEventListener("blur", stopRotating);
+    dom.addEventListener("contextmenu", contextMenu);
+    return () => {
+      stopRotating();
+      dom.removeEventListener("pointerdown", pointerDown);
+      dom.removeEventListener("pointermove", pointerMove);
+      window.removeEventListener("pointerup", pointerUp);
+      window.removeEventListener("pointercancel", stopRotating);
+      window.removeEventListener("blur", stopRotating);
+      dom.removeEventListener("contextmenu", contextMenu);
+    };
+  }, [gl.domElement]);
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
     const k = keys.current;
-    let dx =
+    let inputX =
       Number(k.has("d") || k.has("arrowright")) -
       Number(k.has("a") || k.has("arrowleft"));
-    let dz =
+    let inputZ =
       Number(k.has("s") || k.has("arrowdown")) -
       Number(k.has("w") || k.has("arrowup"));
+    let dx = inputX;
+    let dz = inputZ;
+    if (mode === "third") {
+      const forwardX = Math.sin(cameraYaw.current);
+      const forwardZ = Math.cos(cameraYaw.current);
+      const rightX = Math.cos(cameraYaw.current);
+      const rightZ = -Math.sin(cameraYaw.current);
+      dx = forwardX * -inputZ + rightX * inputX;
+      dz = forwardZ * -inputZ + rightZ * inputX;
+    }
     if (dx || dz) {
       const n = Math.hypot(dx, dz);
       dx /= n;
@@ -456,12 +521,22 @@ function Controller({
     const p = local.current;
     target.set(p.x, 1.1, p.z);
     if (mode === "iso") desired.set(p.x + 11, 15, p.z + 12);
-    else
+    else {
+      const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
-        THREE.MathUtils.clamp(p.x - Math.sin(p.yaw) * 5.7, -12.8, 12.8),
-        4.1,
-        THREE.MathUtils.clamp(p.z - Math.cos(p.yaw) * 5.7, -8.2, 8.3),
+        THREE.MathUtils.clamp(
+          p.x - Math.sin(cameraYaw.current) * horizontalDistance,
+          -12.8,
+          12.8,
+        ),
+        target.y + 5.7 * Math.sin(cameraPitch.current),
+        THREE.MathUtils.clamp(
+          p.z - Math.cos(cameraYaw.current) * horizontalDistance,
+          -8.2,
+          8.3,
+        ),
       );
+    }
     camera.position.lerp(desired, 1 - Math.exp(-4.1 * dt));
     camera.lookAt(target);
     lastPublish.current += dt;
