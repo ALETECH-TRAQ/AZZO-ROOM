@@ -1,5 +1,5 @@
 "use client";
-import { Html, PerspectiveCamera } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -7,6 +7,7 @@ import type { CameraMode, OnlinePlayer, Position } from "@/lib/types";
 import AvatarRenderer, { type Pose } from "./avatar/AvatarRenderer";
 import { defaultAvatar, type AvatarConfig, collides } from "@azzo/avatar";
 import { MEETING_CENTER } from "@/lib/types";
+import SimsCamera from "./SimsCamera";
 
 type Props = {
   mode: CameraMode;
@@ -374,148 +375,6 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
   );
 }
 
-const ELEVATED_CAMERA_DEFAULT_YAW = Math.PI / 4;
-const ELEVATED_CAMERA_DEFAULT_PITCH = THREE.MathUtils.degToRad(50);
-const ELEVATED_CAMERA_DEFAULT_DISTANCE = 11.5;
-const ELEVATED_CAMERA_MIN_DISTANCE = 6;
-const ELEVATED_CAMERA_MAX_DISTANCE = 19;
-
-function ElevatedCamera({
-  active,
-  positionRef,
-}: {
-  active: boolean;
-  positionRef: React.RefObject<Position>;
-}) {
-  const { gl } = useThree();
-  const cameraRef = useRef<THREE.PerspectiveCamera>(null);
-  const activeRef = useRef(active);
-  const wasActive = useRef(false);
-  const rotating = useRef(false);
-  const yaw = useRef(ELEVATED_CAMERA_DEFAULT_YAW);
-  const pitch = useRef(ELEVATED_CAMERA_DEFAULT_PITCH);
-  const distance = useRef(ELEVATED_CAMERA_DEFAULT_DISTANCE);
-  const currentDistance = useRef(ELEVATED_CAMERA_DEFAULT_DISTANCE);
-  const target = useMemo(() => new THREE.Vector3(), []);
-  const smoothTarget = useMemo(() => new THREE.Vector3(), []);
-  const offset = useMemo(() => new THREE.Vector3(), []);
-
-  activeRef.current = active;
-
-  useEffect(() => {
-    if (!active) rotating.current = false;
-  }, [active]);
-
-  useEffect(() => {
-    const dom = gl.domElement;
-    const sensitivity = 0.006;
-
-    const stopRotating = () => {
-      rotating.current = false;
-    };
-    const pointerDown = (event: PointerEvent) => {
-      if (!activeRef.current || event.button !== 2) return;
-      event.preventDefault();
-      rotating.current = true;
-      dom.setPointerCapture?.(event.pointerId);
-    };
-    const pointerMove = (event: PointerEvent) => {
-      if (!activeRef.current || !rotating.current) return;
-      event.preventDefault();
-      yaw.current -= event.movementX * sensitivity;
-      pitch.current = THREE.MathUtils.clamp(
-        pitch.current - event.movementY * sensitivity,
-        THREE.MathUtils.degToRad(25),
-        THREE.MathUtils.degToRad(75),
-      );
-    };
-    const pointerUp = (event: PointerEvent) => {
-      if (event.button !== 2) return;
-      stopRotating();
-      if (dom.hasPointerCapture?.(event.pointerId)) {
-        dom.releasePointerCapture?.(event.pointerId);
-      }
-    };
-    const wheel = (event: WheelEvent) => {
-      if (!activeRef.current) return;
-      event.preventDefault();
-      distance.current = THREE.MathUtils.clamp(
-        distance.current + event.deltaY * 0.008,
-        ELEVATED_CAMERA_MIN_DISTANCE,
-        ELEVATED_CAMERA_MAX_DISTANCE,
-      );
-    };
-
-    dom.addEventListener("pointerdown", pointerDown);
-    dom.addEventListener("pointermove", pointerMove);
-    window.addEventListener("pointerup", pointerUp);
-    window.addEventListener("pointercancel", stopRotating);
-    window.addEventListener("blur", stopRotating);
-    dom.addEventListener("wheel", wheel, { passive: false });
-    return () => {
-      stopRotating();
-      dom.removeEventListener("pointerdown", pointerDown);
-      dom.removeEventListener("pointermove", pointerMove);
-      window.removeEventListener("pointerup", pointerUp);
-      window.removeEventListener("pointercancel", stopRotating);
-      window.removeEventListener("blur", stopRotating);
-      dom.removeEventListener("wheel", wheel);
-    };
-  }, [gl.domElement]);
-
-  useFrame((_, delta) => {
-    const camera = cameraRef.current;
-    if (!active || !camera) {
-      wasActive.current = false;
-      return;
-    }
-
-    const dt = Math.min(delta, 0.05);
-    const player = positionRef.current;
-    target.set(player.x, 1.1, player.z);
-
-    if (!wasActive.current) {
-      smoothTarget.copy(target);
-      currentDistance.current = distance.current;
-      wasActive.current = true;
-    } else {
-      smoothTarget.x = THREE.MathUtils.damp(smoothTarget.x, target.x, 8, dt);
-      smoothTarget.y = target.y;
-      smoothTarget.z = THREE.MathUtils.damp(smoothTarget.z, target.z, 8, dt);
-      currentDistance.current = THREE.MathUtils.damp(
-        currentDistance.current,
-        distance.current,
-        10,
-        dt,
-      );
-    }
-
-    const horizontalDistance =
-      currentDistance.current * Math.cos(pitch.current);
-    offset.set(
-      Math.sin(yaw.current) * horizontalDistance,
-      currentDistance.current * Math.sin(pitch.current),
-      Math.cos(yaw.current) * horizontalDistance,
-    );
-
-    camera.position.copy(smoothTarget).add(offset);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(smoothTarget);
-    camera.rotation.z = 0;
-    camera.updateMatrixWorld();
-  });
-
-  return (
-    <PerspectiveCamera
-      ref={cameraRef}
-      makeDefault={active}
-      fov={42}
-      near={0.1}
-      far={130}
-    />
-  );
-}
-
 function Controller({
   mode,
   color,
@@ -717,7 +576,7 @@ function Controller({
       <group ref={model} position={[0, 0, 5]}>
         <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
       </group>
-      <ElevatedCamera active={mode === "iso"} positionRef={local} />
+      <SimsCamera active={mode === "iso"} positionRef={local} />
     </>
   );
 }
