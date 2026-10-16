@@ -578,8 +578,9 @@ function Controller({
             Math.tan(verticalHalfFov) * safeAspect,
           );
           const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
+          // Keep a compact safety margin while letting the office fill the useful view.
           isoDistance.current =
-            (isoSphere.radius * 1.2) / Math.tan(limitingHalfFov);
+            (isoSphere.radius * 1.05) / Math.tan(limitingHalfFov);
         }
         isoFrameDirty.current = false;
         cameraOrientationDirty.current = true;
