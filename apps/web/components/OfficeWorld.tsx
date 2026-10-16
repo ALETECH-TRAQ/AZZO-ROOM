@@ -1,5 +1,5 @@
 "use client";
-import { Html } from "@react-three/drei";
+import { Html, PerspectiveCamera } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -375,10 +375,10 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
 }
 
 const ELEVATED_CAMERA_DEFAULT_YAW = Math.PI / 4;
-const ELEVATED_CAMERA_DEFAULT_PITCH = Math.PI / 4;
-const ELEVATED_CAMERA_DEFAULT_DISTANCE = 13;
+const ELEVATED_CAMERA_DEFAULT_PITCH = THREE.MathUtils.degToRad(50);
+const ELEVATED_CAMERA_DEFAULT_DISTANCE = 11.5;
 const ELEVATED_CAMERA_MIN_DISTANCE = 6;
-const ELEVATED_CAMERA_MAX_DISTANCE = 22;
+const ELEVATED_CAMERA_MAX_DISTANCE = 19;
 
 function ElevatedCamera({
   active,
@@ -387,7 +387,8 @@ function ElevatedCamera({
   active: boolean;
   positionRef: React.RefObject<Position>;
 }) {
-  const { camera, gl } = useThree();
+  const { gl } = useThree();
+  const cameraRef = useRef<THREE.PerspectiveCamera>(null);
   const activeRef = useRef(active);
   const wasActive = useRef(false);
   const rotating = useRef(false);
@@ -463,7 +464,8 @@ function ElevatedCamera({
   }, [gl.domElement]);
 
   useFrame((_, delta) => {
-    if (!active) {
+    const camera = cameraRef.current;
+    if (!active || !camera) {
       wasActive.current = false;
       return;
     }
@@ -503,7 +505,15 @@ function ElevatedCamera({
     camera.updateMatrixWorld();
   });
 
-  return null;
+  return (
+    <PerspectiveCamera
+      ref={cameraRef}
+      makeDefault={active}
+      fov={42}
+      near={0.1}
+      far={130}
+    />
+  );
 }
 
 function Controller({
