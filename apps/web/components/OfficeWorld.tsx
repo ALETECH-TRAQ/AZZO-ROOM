@@ -384,7 +384,7 @@ function Controller({
   avatar: AvatarConfig | null;
   onPosition: (position: Position) => void;
 }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, scene, size } = useThree();
   const keys = useRef(new Set<string>());
   const local = useRef<Position>({ x: 0, z: 5, yaw: 0 });
   const model = useRef<THREE.Group>(null);
@@ -398,6 +398,14 @@ function Controller({
   const target = useMemo(() => new THREE.Vector3(), []);
   const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
   const isoCenter = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+  const isoDirection = useMemo(
+    () => new THREE.Vector3(11, 13.9, 12).normalize(),
+    [],
+  );
+  const isoBounds = useMemo(() => new THREE.Box3(), []);
+  const isoSphere = useMemo(() => new THREE.Sphere(), []);
+  const isoDistance = useRef(32);
+  const isoFrameDirty = useRef(true);
   const cameraForward = useMemo(() => new THREE.Vector3(), []);
   const cameraRight = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
@@ -406,6 +414,9 @@ function Controller({
     if (mode !== "third") rotatingCamera.current = false;
     cameraOrientationDirty.current = true;
   }, [mode]);
+  useEffect(() => {
+    isoFrameDirty.current = true;
+  }, [size.width, size.height]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (
@@ -542,8 +553,38 @@ function Controller({
     const p = local.current;
     target.set(p.x, 1.1, p.z);
     focus.lerp(target, 1 - Math.exp(-4.1 * dt));
-    if (mode === "iso") desired.set(isoCenter.x + 11, 13.9, isoCenter.z + 12);
-    else {
+    if (mode === "iso") {
+      if (isoFrameDirty.current) {
+        isoBounds.setFromObject(scene);
+        if (isoBounds.isEmpty()) {
+          isoCenter.set(0, 0, 0);
+          isoDistance.current = 32;
+        } else {
+          isoBounds.getCenter(isoCenter);
+          isoBounds.getBoundingSphere(isoSphere);
+          const desktopPanelSpace =
+            size.width >= 1100 ? 620 : size.width >= 780 ? 510 : 0;
+          const usableWidth = Math.max(
+            size.width - desktopPanelSpace,
+            size.width * 0.45,
+          );
+          const safeAspect = usableWidth / Math.max(size.height, 1);
+          const perspective = camera as THREE.PerspectiveCamera;
+          const verticalHalfFov = THREE.MathUtils.degToRad(perspective.fov / 2);
+          const horizontalHalfFov = Math.atan(
+            Math.tan(verticalHalfFov) * safeAspect,
+          );
+          const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
+          isoDistance.current =
+            (isoSphere.radius * 1.2) / Math.tan(limitingHalfFov);
+        }
+        isoFrameDirty.current = false;
+        cameraOrientationDirty.current = true;
+      }
+      desired
+        .copy(isoCenter)
+        .addScaledVector(isoDirection, isoDistance.current);
+    } else {
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
         focus.x - Math.sin(cameraYaw.current) * horizontalDistance,
