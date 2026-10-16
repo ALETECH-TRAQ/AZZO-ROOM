@@ -397,6 +397,7 @@ function Controller({
   const desired = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
   const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
+  const isoCenter = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const cameraForward = useMemo(() => new THREE.Vector3(), []);
   const cameraRight = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
@@ -541,7 +542,7 @@ function Controller({
     const p = local.current;
     target.set(p.x, 1.1, p.z);
     focus.lerp(target, 1 - Math.exp(-4.1 * dt));
-    if (mode === "iso") desired.set(focus.x + 11, 15, focus.z + 12);
+    if (mode === "iso") desired.set(isoCenter.x + 11, 13.9, isoCenter.z + 12);
     else {
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
@@ -554,7 +555,7 @@ function Controller({
     if (cameraOrientationDirty.current) {
       camera.up.set(0, 1, 0);
       if (mode === "iso") {
-        camera.lookAt(focus);
+        camera.lookAt(isoCenter);
         camera.rotation.z = 0;
       } else {
         camera.rotation.order = "YXZ";
@@ -608,7 +609,7 @@ export default function OfficeWorld({
       }
       shadows
       dpr={[1, 1.6]}
-      camera={{ position: [11, 15, 17], fov: 48, near: 0.1, far: 130 }}
+      camera={{ position: [11, 13.9, 12], fov: 48, near: 0.1, far: 130 }}
       gl={{ antialias: true }}
     >
       <color attach="background" args={["#0b151d"]} />
