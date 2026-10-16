@@ -373,6 +373,139 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
     </group>
   );
 }
+
+const ELEVATED_CAMERA_DEFAULT_YAW = Math.PI / 4;
+const ELEVATED_CAMERA_DEFAULT_PITCH = Math.PI / 4;
+const ELEVATED_CAMERA_DEFAULT_DISTANCE = 13;
+const ELEVATED_CAMERA_MIN_DISTANCE = 6;
+const ELEVATED_CAMERA_MAX_DISTANCE = 22;
+
+function ElevatedCamera({
+  active,
+  positionRef,
+}: {
+  active: boolean;
+  positionRef: React.RefObject<Position>;
+}) {
+  const { camera, gl } = useThree();
+  const activeRef = useRef(active);
+  const wasActive = useRef(false);
+  const rotating = useRef(false);
+  const yaw = useRef(ELEVATED_CAMERA_DEFAULT_YAW);
+  const pitch = useRef(ELEVATED_CAMERA_DEFAULT_PITCH);
+  const distance = useRef(ELEVATED_CAMERA_DEFAULT_DISTANCE);
+  const currentDistance = useRef(ELEVATED_CAMERA_DEFAULT_DISTANCE);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const smoothTarget = useMemo(() => new THREE.Vector3(), []);
+  const offset = useMemo(() => new THREE.Vector3(), []);
+
+  activeRef.current = active;
+
+  useEffect(() => {
+    if (!active) rotating.current = false;
+  }, [active]);
+
+  useEffect(() => {
+    const dom = gl.domElement;
+    const sensitivity = 0.006;
+
+    const stopRotating = () => {
+      rotating.current = false;
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (!activeRef.current || event.button !== 2) return;
+      event.preventDefault();
+      rotating.current = true;
+      dom.setPointerCapture?.(event.pointerId);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (!activeRef.current || !rotating.current) return;
+      event.preventDefault();
+      yaw.current -= event.movementX * sensitivity;
+      pitch.current = THREE.MathUtils.clamp(
+        pitch.current - event.movementY * sensitivity,
+        THREE.MathUtils.degToRad(25),
+        THREE.MathUtils.degToRad(75),
+      );
+    };
+    const pointerUp = (event: PointerEvent) => {
+      if (event.button !== 2) return;
+      stopRotating();
+      if (dom.hasPointerCapture?.(event.pointerId)) {
+        dom.releasePointerCapture?.(event.pointerId);
+      }
+    };
+    const wheel = (event: WheelEvent) => {
+      if (!activeRef.current) return;
+      event.preventDefault();
+      distance.current = THREE.MathUtils.clamp(
+        distance.current + event.deltaY * 0.008,
+        ELEVATED_CAMERA_MIN_DISTANCE,
+        ELEVATED_CAMERA_MAX_DISTANCE,
+      );
+    };
+
+    dom.addEventListener("pointerdown", pointerDown);
+    dom.addEventListener("pointermove", pointerMove);
+    window.addEventListener("pointerup", pointerUp);
+    window.addEventListener("pointercancel", stopRotating);
+    window.addEventListener("blur", stopRotating);
+    dom.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      stopRotating();
+      dom.removeEventListener("pointerdown", pointerDown);
+      dom.removeEventListener("pointermove", pointerMove);
+      window.removeEventListener("pointerup", pointerUp);
+      window.removeEventListener("pointercancel", stopRotating);
+      window.removeEventListener("blur", stopRotating);
+      dom.removeEventListener("wheel", wheel);
+    };
+  }, [gl.domElement]);
+
+  useFrame((_, delta) => {
+    if (!active) {
+      wasActive.current = false;
+      return;
+    }
+
+    const dt = Math.min(delta, 0.05);
+    const player = positionRef.current;
+    target.set(player.x, 1.1, player.z);
+
+    if (!wasActive.current) {
+      smoothTarget.copy(target);
+      currentDistance.current = distance.current;
+      wasActive.current = true;
+    } else {
+      smoothTarget.x = THREE.MathUtils.damp(smoothTarget.x, target.x, 8, dt);
+      smoothTarget.y = target.y;
+      smoothTarget.z = THREE.MathUtils.damp(smoothTarget.z, target.z, 8, dt);
+      currentDistance.current = THREE.MathUtils.damp(
+        currentDistance.current,
+        distance.current,
+        10,
+        dt,
+      );
+    }
+
+    const horizontalDistance =
+      currentDistance.current * Math.cos(pitch.current);
+    offset.set(
+      Math.sin(yaw.current) * horizontalDistance,
+      currentDistance.current * Math.sin(pitch.current),
+      Math.cos(yaw.current) * horizontalDistance,
+    );
+
+    camera.position.copy(smoothTarget).add(offset);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(smoothTarget);
+    camera.rotation.z = 0;
+    camera.updateMatrixWorld();
+  });
+
+  return null;
+}
+
 function Controller({
   mode,
   color,
@@ -384,7 +517,7 @@ function Controller({
   avatar: AvatarConfig | null;
   onPosition: (position: Position) => void;
 }) {
-  const { camera, gl, scene } = useThree();
+  const { camera, gl } = useThree();
   const keys = useRef(new Set<string>());
   const local = useRef<Position>({ x: 0, z: 5, yaw: 0 });
   const model = useRef<THREE.Group>(null);
@@ -392,10 +525,6 @@ function Controller({
   const modeRef = useRef(mode);
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0.55);
-  const elevatedYaw = useRef(Math.PI / 4);
-  const elevatedPitch = useRef(Math.PI / 4);
-  const elevatedDistance = useRef(13);
-  const elevatedCurrentDistance = useRef(13);
   const rotatingCamera = useRef(false);
   const cameraOrientationDirty = useRef(true);
   const desired = useMemo(() => new THREE.Vector3(), []);
@@ -403,9 +532,6 @@ function Controller({
   const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
   const cameraForward = useMemo(() => new THREE.Vector3(), []);
   const cameraRight = useMemo(() => new THREE.Vector3(), []);
-  const elevatedOffset = useMemo(() => new THREE.Vector3(), []);
-  const cameraRay = useMemo(() => new THREE.Raycaster(), []);
-  const cameraDirection = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
 
   useEffect(() => {
@@ -455,29 +581,20 @@ function Controller({
       rotatingCamera.current = false;
     };
     const pointerDown = (event: PointerEvent) => {
-      if (event.button !== 2) return;
+      if (event.button !== 2 || modeRef.current !== "third") return;
       event.preventDefault();
       rotatingCamera.current = true;
       dom.setPointerCapture?.(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
-      if (!rotatingCamera.current) return;
+      if (!rotatingCamera.current || modeRef.current !== "third") return;
       event.preventDefault();
-      if (modeRef.current === "third") {
-        cameraYaw.current -= event.movementX * sensitivity;
-        cameraPitch.current = THREE.MathUtils.clamp(
-          cameraPitch.current - event.movementY * sensitivity,
-          0.18,
-          1.2,
-        );
-      } else {
-        elevatedYaw.current -= event.movementX * sensitivity;
-        elevatedPitch.current = THREE.MathUtils.clamp(
-          elevatedPitch.current - event.movementY * sensitivity,
-          THREE.MathUtils.degToRad(25),
-          THREE.MathUtils.degToRad(75),
-        );
-      }
+      cameraYaw.current -= event.movementX * sensitivity;
+      cameraPitch.current = THREE.MathUtils.clamp(
+        cameraPitch.current - event.movementY * sensitivity,
+        0.18,
+        1.2,
+      );
       cameraOrientationDirty.current = true;
     };
     const pointerUp = (event: PointerEvent) => {
@@ -488,22 +605,12 @@ function Controller({
       }
     };
     const contextMenu = (event: MouseEvent) => event.preventDefault();
-    const wheel = (event: WheelEvent) => {
-      if (modeRef.current !== "iso") return;
-      event.preventDefault();
-      elevatedDistance.current = THREE.MathUtils.clamp(
-        elevatedDistance.current + event.deltaY * 0.008,
-        6,
-        22,
-      );
-    };
     dom.addEventListener("pointerdown", pointerDown);
     dom.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
     window.addEventListener("pointercancel", stopRotating);
     window.addEventListener("blur", stopRotating);
     dom.addEventListener("contextmenu", contextMenu);
-    dom.addEventListener("wheel", wheel, { passive: false });
     return () => {
       stopRotating();
       dom.removeEventListener("pointerdown", pointerDown);
@@ -512,7 +619,6 @@ function Controller({
       window.removeEventListener("pointercancel", stopRotating);
       window.removeEventListener("blur", stopRotating);
       dom.removeEventListener("contextmenu", contextMenu);
-      dom.removeEventListener("wheel", wheel);
     };
   }, [gl.domElement]);
   useFrame((_, delta) => {
@@ -567,39 +673,7 @@ function Controller({
     }
     const p = local.current;
     target.set(p.x, 1.1, p.z);
-    if (mode === "iso") {
-      focus.copy(target);
-      const horizontalDistance =
-        elevatedDistance.current * Math.cos(elevatedPitch.current);
-      elevatedOffset.set(
-        Math.sin(elevatedYaw.current) * horizontalDistance,
-        elevatedDistance.current * Math.sin(elevatedPitch.current),
-        Math.cos(elevatedYaw.current) * horizontalDistance,
-      );
-      cameraDirection.copy(elevatedOffset).normalize();
-      const officeEnvironment = scene.getObjectByName(
-        "azzo-office-environment",
-      );
-      let allowedDistance = elevatedDistance.current;
-      if (officeEnvironment) {
-        cameraRay.set(focus, cameraDirection);
-        cameraRay.far = elevatedDistance.current;
-        const obstruction = cameraRay
-          .intersectObject(officeEnvironment, true)
-          .find((hit) => hit.distance > 0.5);
-        if (obstruction) {
-          allowedDistance = Math.max(3.5, obstruction.distance - 0.35);
-        }
-      }
-      elevatedCurrentDistance.current = THREE.MathUtils.damp(
-        elevatedCurrentDistance.current,
-        allowedDistance,
-        10,
-        dt,
-      );
-      elevatedOffset.setLength(elevatedCurrentDistance.current);
-      desired.copy(focus).add(elevatedOffset);
-    } else {
+    if (mode === "third") {
       focus.lerp(target, 1 - Math.exp(-4.1 * dt));
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
@@ -607,18 +681,20 @@ function Controller({
         focus.y + 5.7 * Math.sin(cameraPitch.current),
         focus.z - Math.cos(cameraYaw.current) * horizontalDistance,
       );
-    }
-    camera.position.copy(desired);
-    if (mode === "iso") {
-      camera.up.set(0, 1, 0);
-      camera.lookAt(focus);
-      camera.rotation.z = 0;
-      cameraOrientationDirty.current = false;
-    } else if (cameraOrientationDirty.current) {
-      camera.up.set(0, 1, 0);
-      camera.rotation.order = "YXZ";
-      camera.rotation.set(-cameraPitch.current, Math.PI + cameraYaw.current, 0);
-      cameraOrientationDirty.current = false;
+      camera.position.copy(desired);
+      if (cameraOrientationDirty.current) {
+        camera.up.set(0, 1, 0);
+        camera.rotation.order = "YXZ";
+        camera.rotation.set(
+          -cameraPitch.current,
+          Math.PI + cameraYaw.current,
+          0,
+        );
+        cameraOrientationDirty.current = false;
+      }
+    } else {
+      // Keep the existing third-person focus synchronized while its camera is inactive.
+      focus.copy(target);
     }
     lastPublish.current += dt;
     if (lastPublish.current >= 0.1) {
@@ -627,9 +703,12 @@ function Controller({
     }
   });
   return (
-    <group ref={model} position={[0, 0, 5]}>
-      <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
-    </group>
+    <>
+      <group ref={model} position={[0, 0, 5]}>
+        <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
+      </group>
+      <ElevatedCamera active={mode === "iso"} positionRef={local} />
+    </>
   );
 }
 function MovingAvatar({
