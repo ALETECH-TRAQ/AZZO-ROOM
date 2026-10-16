@@ -384,7 +384,7 @@ function Controller({
   avatar: AvatarConfig | null;
   onPosition: (position: Position) => void;
 }) {
-  const { camera, gl, scene, size } = useThree();
+  const { camera, gl, scene } = useThree();
   const keys = useRef(new Set<string>());
   const local = useRef<Position>({ x: 0, z: 5, yaw: 0 });
   const model = useRef<THREE.Group>(null);
@@ -392,31 +392,25 @@ function Controller({
   const modeRef = useRef(mode);
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0.55);
+  const elevatedYaw = useRef(Math.PI / 4);
+  const elevatedPitch = useRef(Math.PI / 4);
+  const elevatedDistance = useRef(13);
   const rotatingCamera = useRef(false);
   const cameraOrientationDirty = useRef(true);
   const desired = useMemo(() => new THREE.Vector3(), []);
   const target = useMemo(() => new THREE.Vector3(), []);
   const focus = useMemo(() => new THREE.Vector3(0, 1.1, 5), []);
-  const isoCenter = useMemo(() => new THREE.Vector3(0, 0, 0), []);
-  const isoDirection = useMemo(
-    () => new THREE.Vector3(11, 13.9, 12).normalize(),
-    [],
-  );
-  const isoBounds = useMemo(() => new THREE.Box3(), []);
-  const isoSphere = useMemo(() => new THREE.Sphere(), []);
-  const isoDistance = useRef(32);
-  const isoFrameDirty = useRef(true);
   const cameraForward = useMemo(() => new THREE.Vector3(), []);
   const cameraRight = useMemo(() => new THREE.Vector3(), []);
+  const elevatedOffset = useMemo(() => new THREE.Vector3(), []);
+  const cameraRay = useMemo(() => new THREE.Raycaster(), []);
+  const cameraDirection = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
 
   useEffect(() => {
     if (mode !== "third") rotatingCamera.current = false;
     cameraOrientationDirty.current = true;
   }, [mode]);
-  useEffect(() => {
-    isoFrameDirty.current = true;
-  }, [size.width, size.height]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (
@@ -460,20 +454,29 @@ function Controller({
       rotatingCamera.current = false;
     };
     const pointerDown = (event: PointerEvent) => {
-      if (event.button !== 2 || modeRef.current !== "third") return;
+      if (event.button !== 2) return;
       event.preventDefault();
       rotatingCamera.current = true;
       dom.setPointerCapture?.(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
-      if (!rotatingCamera.current || modeRef.current !== "third") return;
+      if (!rotatingCamera.current) return;
       event.preventDefault();
-      cameraYaw.current -= event.movementX * sensitivity;
-      cameraPitch.current = THREE.MathUtils.clamp(
-        cameraPitch.current - event.movementY * sensitivity,
-        0.18,
-        1.2,
-      );
+      if (modeRef.current === "third") {
+        cameraYaw.current -= event.movementX * sensitivity;
+        cameraPitch.current = THREE.MathUtils.clamp(
+          cameraPitch.current - event.movementY * sensitivity,
+          0.18,
+          1.2,
+        );
+      } else {
+        elevatedYaw.current -= event.movementX * sensitivity;
+        elevatedPitch.current = THREE.MathUtils.clamp(
+          elevatedPitch.current - event.movementY * sensitivity,
+          THREE.MathUtils.degToRad(25),
+          THREE.MathUtils.degToRad(75),
+        );
+      }
       cameraOrientationDirty.current = true;
     };
     const pointerUp = (event: PointerEvent) => {
@@ -484,12 +487,22 @@ function Controller({
       }
     };
     const contextMenu = (event: MouseEvent) => event.preventDefault();
+    const wheel = (event: WheelEvent) => {
+      if (modeRef.current !== "iso") return;
+      event.preventDefault();
+      elevatedDistance.current = THREE.MathUtils.clamp(
+        elevatedDistance.current + event.deltaY * 0.008,
+        6,
+        22,
+      );
+    };
     dom.addEventListener("pointerdown", pointerDown);
     dom.addEventListener("pointermove", pointerMove);
     window.addEventListener("pointerup", pointerUp);
     window.addEventListener("pointercancel", stopRotating);
     window.addEventListener("blur", stopRotating);
     dom.addEventListener("contextmenu", contextMenu);
+    dom.addEventListener("wheel", wheel, { passive: false });
     return () => {
       stopRotating();
       dom.removeEventListener("pointerdown", pointerDown);
@@ -498,6 +511,7 @@ function Controller({
       window.removeEventListener("pointercancel", stopRotating);
       window.removeEventListener("blur", stopRotating);
       dom.removeEventListener("contextmenu", contextMenu);
+      dom.removeEventListener("wheel", wheel);
     };
   }, [gl.domElement]);
   useFrame((_, delta) => {
@@ -554,40 +568,28 @@ function Controller({
     target.set(p.x, 1.1, p.z);
     focus.lerp(target, 1 - Math.exp(-4.1 * dt));
     if (mode === "iso") {
-      if (isoFrameDirty.current) {
-        const officeEnvironment = scene.getObjectByName(
-          "azzo-office-environment",
-        );
-        isoBounds.setFromObject(officeEnvironment || scene);
-        if (isoBounds.isEmpty()) {
-          isoCenter.set(0, 0, 0);
-          isoDistance.current = 32;
-        } else {
-          isoBounds.getCenter(isoCenter);
-          isoBounds.getBoundingSphere(isoSphere);
-          const desktopPanelSpace =
-            size.width >= 1100 ? 620 : size.width >= 780 ? 510 : 0;
-          const usableWidth = Math.max(
-            size.width - desktopPanelSpace,
-            size.width * 0.45,
-          );
-          const safeAspect = usableWidth / Math.max(size.height, 1);
-          const perspective = camera as THREE.PerspectiveCamera;
-          const verticalHalfFov = THREE.MathUtils.degToRad(perspective.fov / 2);
-          const horizontalHalfFov = Math.atan(
-            Math.tan(verticalHalfFov) * safeAspect,
-          );
-          const limitingHalfFov = Math.min(verticalHalfFov, horizontalHalfFov);
-          // Keep a compact safety margin while letting the office fill the useful view.
-          isoDistance.current =
-            (isoSphere.radius * 1.05) / Math.tan(limitingHalfFov);
+      const horizontalDistance =
+        elevatedDistance.current * Math.cos(elevatedPitch.current);
+      elevatedOffset.set(
+        Math.sin(elevatedYaw.current) * horizontalDistance,
+        elevatedDistance.current * Math.sin(elevatedPitch.current),
+        Math.cos(elevatedYaw.current) * horizontalDistance,
+      );
+      cameraDirection.copy(elevatedOffset).normalize();
+      const officeEnvironment = scene.getObjectByName(
+        "azzo-office-environment",
+      );
+      if (officeEnvironment) {
+        cameraRay.set(focus, cameraDirection);
+        cameraRay.far = elevatedDistance.current;
+        const obstruction = cameraRay
+          .intersectObject(officeEnvironment, true)
+          .find((hit) => hit.distance > 0.5);
+        if (obstruction) {
+          elevatedOffset.setLength(Math.max(3.5, obstruction.distance - 0.35));
         }
-        isoFrameDirty.current = false;
-        cameraOrientationDirty.current = true;
       }
-      desired
-        .copy(isoCenter)
-        .addScaledVector(isoDirection, isoDistance.current);
+      desired.copy(focus).add(elevatedOffset);
     } else {
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
@@ -600,7 +602,7 @@ function Controller({
     if (cameraOrientationDirty.current) {
       camera.up.set(0, 1, 0);
       if (mode === "iso") {
-        camera.lookAt(isoCenter);
+        camera.lookAt(focus);
         camera.rotation.z = 0;
       } else {
         camera.rotation.order = "YXZ";
@@ -654,7 +656,7 @@ export default function OfficeWorld({
       }
       shadows
       dpr={[1, 1.6]}
-      camera={{ position: [11, 13.9, 12], fov: 48, near: 0.1, far: 130 }}
+      camera={{ position: [9.19, 10.29, 14.19], fov: 48, near: 0.1, far: 130 }}
       gl={{ antialias: true }}
     >
       <color attach="background" args={["#0b151d"]} />
