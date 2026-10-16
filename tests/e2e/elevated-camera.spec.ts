@@ -110,6 +110,26 @@ test("elevated camera: first rendered frame, follow, fixed orientation and lifec
   centered(initial);
   expect(initial.distance).toBeCloseTo(11.5, 6);
   const orientation = initial.quaternion;
+  // Initialization may replace the avatar position after camera layout effects.
+  // Observe the very next rendered frame, without giving damping time to settle.
+  const marker = await page.evaluate(() => {
+    const probe = (window as any).__cameraProbe;
+    probe.player.current = { ...probe.player.current, x: 2, z: 4 };
+    return probe.frames.length;
+  });
+  await expect
+    .poll(async () =>
+      page.evaluate(() => (window as any).__cameraProbe.frames.length),
+    )
+    .toBeGreaterThan(marker);
+  const positioned = await page.evaluate(
+    (index) => (window as any).__cameraProbe.frames[index],
+    marker,
+  );
+  level(positioned);
+  centered(positioned, 1e-6);
+  expect(positioned.distance).toBeCloseTo(11.5, 6);
+
   await page.screenshot({ path: testInfo.outputPath("initial.png") });
 
   // No V key has been used: every direction must move both avatar and camera.

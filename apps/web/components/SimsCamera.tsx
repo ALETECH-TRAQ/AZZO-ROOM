@@ -43,6 +43,7 @@ export default function SimsCamera({
       target,
       distance: VIEW.distance,
       zoom: VIEW.distance,
+      playerPosition: positionRef.current,
     };
     const player = positionRef.current;
     focus.set(player.x, VIEW.targetHeight, player.z);
@@ -60,6 +61,7 @@ export default function SimsCamera({
     if (!active) return;
     const previousCamera = get().camera;
     const player = positionRef.current;
+    rig.playerPosition = player;
     rig.focus.set(player.x, VIEW.targetHeight, player.z);
     rig.distance = rig.zoom;
     rig.camera.position
@@ -100,7 +102,15 @@ export default function SimsCamera({
     if (!active) return;
     const player = positionRef.current;
     rig.target.set(player.x, VIEW.targetHeight, player.z);
-    rig.focus.lerp(rig.target, 1 - Math.exp(-VIEW.followSpeed * delta));
+    // A new position object denotes initialization/re-entry, not walking.
+    // Layout effects can supply it after this camera's activation effect.
+    // Snap before rendering that first frame; only continuous movement is damped.
+    if (rig.playerPosition !== player) {
+      rig.playerPosition = player;
+      rig.focus.copy(rig.target);
+    } else {
+      rig.focus.lerp(rig.target, 1 - Math.exp(-VIEW.followSpeed * delta));
+    }
     rig.distance = THREE.MathUtils.damp(
       rig.distance,
       rig.zoom,
