@@ -113,7 +113,7 @@ function Plant({ x, z, size = 1 }: { x: number; z: number; size?: number }) {
 }
 function OfficeEnvironment() {
   return (
-    <group>
+    <group name="azzo-office-environment">
       <ambientLight intensity={1.05} color="#bedcf3" />
       <hemisphereLight args={["#d8fbfa", "#294153", 2]} />
       <directionalLight
@@ -555,7 +555,10 @@ function Controller({
     focus.lerp(target, 1 - Math.exp(-4.1 * dt));
     if (mode === "iso") {
       if (isoFrameDirty.current) {
-        isoBounds.setFromObject(scene);
+        const officeEnvironment = scene.getObjectByName(
+          "azzo-office-environment",
+        );
+        isoBounds.setFromObject(officeEnvironment || scene);
         if (isoBounds.isEmpty()) {
           isoCenter.set(0, 0, 0);
           isoDistance.current = 32;
