@@ -567,8 +567,8 @@ function Controller({
     }
     const p = local.current;
     target.set(p.x, 1.1, p.z);
-    focus.lerp(target, 1 - Math.exp(-4.1 * dt));
     if (mode === "iso") {
+      focus.copy(target);
       const horizontalDistance =
         elevatedDistance.current * Math.cos(elevatedPitch.current);
       elevatedOffset.set(
@@ -600,6 +600,7 @@ function Controller({
       elevatedOffset.setLength(elevatedCurrentDistance.current);
       desired.copy(focus).add(elevatedOffset);
     } else {
+      focus.lerp(target, 1 - Math.exp(-4.1 * dt));
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
         focus.x - Math.sin(cameraYaw.current) * horizontalDistance,
@@ -652,6 +653,15 @@ export default function OfficeWorld({
   players,
   onPosition,
 }: Props) {
+  const initialCamera = useMemo(
+    () => ({
+      position: [6.5, 10.29, 11.5] as [number, number, number],
+      fov: 48,
+      near: 0.1,
+      far: 130,
+    }),
+    [],
+  );
   return (
     <Canvas
       fallback={
@@ -661,7 +671,7 @@ export default function OfficeWorld({
       }
       shadows
       dpr={[1, 1.6]}
-      camera={{ position: [6.5, 10.29, 11.5], fov: 48, near: 0.1, far: 130 }}
+      camera={initialCamera}
       gl={{ antialias: true }}
     >
       <color attach="background" args={["#0b151d"]} />
