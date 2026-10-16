@@ -16,6 +16,19 @@ type Props = {
   onPosition: (position: Position) => void;
 };
 
+function dampAngle(
+  current: number,
+  target: number,
+  speed: number,
+  delta: number,
+) {
+  const shortestDelta = Math.atan2(
+    Math.sin(target - current),
+    Math.cos(target - current),
+  );
+  return current + shortestDelta * (1 - Math.exp(-speed * delta));
+}
+
 function Box({
   position,
   scale,
@@ -336,7 +349,7 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
       12,
       delta,
     );
-    ref.current.rotation.y = THREE.MathUtils.damp(
+    ref.current.rotation.y = dampAngle(
       ref.current.rotation.y,
       player.yaw,
       12,
@@ -518,7 +531,7 @@ function Controller({
       dx || dz ? (k.has("shift") ? "run" : "walk") : "idle";
     if (model.current) {
       model.current.position.set(local.current.x, 0, local.current.z);
-      model.current.rotation.y = THREE.MathUtils.damp(
+      model.current.rotation.y = dampAngle(
         model.current.rotation.y,
         local.current.yaw,
         14,
