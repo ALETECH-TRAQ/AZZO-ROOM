@@ -395,6 +395,7 @@ function Controller({
   const elevatedYaw = useRef(Math.PI / 4);
   const elevatedPitch = useRef(Math.PI / 4);
   const elevatedDistance = useRef(13);
+  const elevatedCurrentDistance = useRef(13);
   const rotatingCamera = useRef(false);
   const cameraOrientationDirty = useRef(true);
   const desired = useMemo(() => new THREE.Vector3(), []);
@@ -579,6 +580,7 @@ function Controller({
       const officeEnvironment = scene.getObjectByName(
         "azzo-office-environment",
       );
+      let allowedDistance = elevatedDistance.current;
       if (officeEnvironment) {
         cameraRay.set(focus, cameraDirection);
         cameraRay.far = elevatedDistance.current;
@@ -586,9 +588,16 @@ function Controller({
           .intersectObject(officeEnvironment, true)
           .find((hit) => hit.distance > 0.5);
         if (obstruction) {
-          elevatedOffset.setLength(Math.max(3.5, obstruction.distance - 0.35));
+          allowedDistance = Math.max(3.5, obstruction.distance - 0.35);
         }
       }
+      elevatedCurrentDistance.current = THREE.MathUtils.damp(
+        elevatedCurrentDistance.current,
+        allowedDistance,
+        10,
+        dt,
+      );
+      elevatedOffset.setLength(elevatedCurrentDistance.current);
       desired.copy(focus).add(elevatedOffset);
     } else {
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
@@ -599,19 +608,15 @@ function Controller({
       );
     }
     camera.position.copy(desired);
-    if (cameraOrientationDirty.current) {
+    if (mode === "iso") {
       camera.up.set(0, 1, 0);
-      if (mode === "iso") {
-        camera.lookAt(focus);
-        camera.rotation.z = 0;
-      } else {
-        camera.rotation.order = "YXZ";
-        camera.rotation.set(
-          -cameraPitch.current,
-          Math.PI + cameraYaw.current,
-          0,
-        );
-      }
+      camera.lookAt(focus);
+      camera.rotation.z = 0;
+      cameraOrientationDirty.current = false;
+    } else if (cameraOrientationDirty.current) {
+      camera.up.set(0, 1, 0);
+      camera.rotation.order = "YXZ";
+      camera.rotation.set(-cameraPitch.current, Math.PI + cameraYaw.current, 0);
       cameraOrientationDirty.current = false;
     }
     lastPublish.current += dt;
@@ -656,7 +661,7 @@ export default function OfficeWorld({
       }
       shadows
       dpr={[1, 1.6]}
-      camera={{ position: [9.19, 10.29, 14.19], fov: 48, near: 0.1, far: 130 }}
+      camera={{ position: [6.5, 10.29, 11.5], fov: 48, near: 0.1, far: 130 }}
       gl={{ antialias: true }}
     >
       <color attach="background" args={["#0b151d"]} />
