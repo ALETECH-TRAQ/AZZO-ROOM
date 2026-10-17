@@ -64,7 +64,9 @@ test("avatar 3D editável, persistência e escritório", async ({ page }) => {
   await page.getByRole("button", { name: "Willow", exact: true }).click();
   await page.getByLabel("Nome exibido").fill("Ana AZZO");
   await page.getByRole("button", { name: "Cabelo", exact: true }).click();
-  await page.getByRole("button", { name: "Undercut", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Original da base", exact: true })
+    .click();
   await page.getByRole("button", { name: "Pele", exact: true }).click();
   await page.getByRole("button", { name: "skin 6", exact: true }).click();
   await page.getByRole("button", { name: "Óculos", exact: true }).click();
@@ -94,11 +96,11 @@ test("avatar 3D editável, persistência e escritório", async ({ page }) => {
   );
   expect(profile).toMatchObject({
     base: "fem",
-    hair: 6,
+    hair: 0,
     skin: 5,
     glasses: 1,
     top: 1,
-    accessories: [0, 2],
+    accessories: [2],
   });
   await page
     .getByRole("button", { name: "Entrar no escritório", exact: true })

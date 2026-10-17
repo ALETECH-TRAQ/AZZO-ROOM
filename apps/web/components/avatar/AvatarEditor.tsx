@@ -17,6 +17,13 @@ import {
   Glasses,
   Shirt,
   Headphones,
+  ContactRound,
+  Backpack,
+  Coffee,
+  Watch,
+  HardHat,
+  GraduationCap,
+  CircleDot,
   Sparkles,
   Save,
   LoaderCircle,
@@ -58,6 +65,16 @@ const tabs = [
   ["Acessórios", Headphones],
   ["Presets", Sparkles],
 ] as const;
+const accessoryIcons = [
+  ContactRound,
+  Headphones,
+  Backpack,
+  Coffee,
+  Watch,
+  HardHat,
+  GraduationCap,
+  CircleDot,
+];
 export default function AvatarEditor({
   demoEnabled,
 }: {
@@ -74,8 +91,10 @@ export default function AvatarEditor({
   useEffect(() => {
     const local = loadAvatar();
     if (local) {
-      setConfig(local);
-      setSaved(true);
+      const profile = { ...local, hair: 0 };
+      setConfig(profile);
+      if (local.hair !== 0) saveAvatar(profile);
+      setSaved(local.hair === 0);
     }
     const isDemo =
       demoEnabled && new URLSearchParams(location.search).get("demo") === "1";
@@ -97,9 +116,10 @@ export default function AvatarEditor({
           const { validateAvatar } = await import("@/lib/avatars");
           const valid = validateAvatar(r.data.config);
           if (valid) {
-            setConfig(valid);
-            saveAvatar(valid);
-            setSaved(true);
+            const profile = { ...valid, hair: 0 };
+            setConfig(profile);
+            saveAvatar(profile);
+            setSaved(valid.hair === 0);
           }
         }
       }
@@ -314,10 +334,19 @@ export default function AvatarEditor({
                           base: b,
                           hair: 0,
                           body: 1,
+                          accessories:
+                            b === "masc"
+                              ? config.accessories.filter((id) => id !== 0)
+                              : config.accessories,
                         })
                       }
                     >
-                      <UserRound size={25} />
+                      <span
+                        className={`base-avatar base-avatar-${b}`}
+                        aria-hidden="true"
+                      >
+                        <span />
+                      </span>
                       <span>{["Central", "Willow"][i]}</span>
                       {config.base === b && <Check size={14} />}
                     </button>
@@ -421,10 +450,12 @@ export default function AvatarEditor({
               <>
                 <h3>Cor do cabelo</h3>
                 {swatches(hairColors, "hairColor")}
-                <h3>
-                  Seu corte, sem regras <small>14 estilos</small>
-                </h3>
-                {choices(hairs, "hair")}
+                <h3>Penteado esculpido</h3>
+                <p className="option-description">
+                  O cabelo faz parte do modelo original. Você pode escolher a
+                  cor; cortes adicionais precisam de peças 3D compatíveis.
+                </p>
+                {choices(hairs.slice(0, 1), "hair")}
               </>
             )}
             {tab === "Óculos" && (
@@ -450,27 +481,57 @@ export default function AvatarEditor({
             {tab === "Acessórios" && (
               <>
                 <p className="option-description">
-                  Pequenos detalhes, muita personalidade.
+                  Pequenos detalhes, muita personalidade. Escolha apenas um item
+                  de cabeça por vez.
                 </p>
                 <div className="accessory-list">
                   {accessories.map((a, i) => (
                     <button
                       key={a}
+                      disabled={i === 0 && config.base === "masc"}
                       aria-pressed={config.accessories.includes(i)}
                       className={
                         config.accessories.includes(i) ? "selected" : ""
                       }
-                      onClick={() =>
-                        update({
-                          accessories: config.accessories.includes(i)
-                            ? config.accessories.filter((x) => x !== i)
-                            : [...config.accessories, i],
-                        })
+                      aria-label={
+                        i === 0 && config.base === "masc"
+                          ? "Crachá já incluído no modelo"
+                          : a
                       }
+                      onClick={() => {
+                        if (config.accessories.includes(i)) {
+                          update({
+                            accessories: config.accessories.filter(
+                              (x) => x !== i,
+                            ),
+                          });
+                          return;
+                        }
+                        const headItems = [1, 5, 6];
+                        const next = config.accessories.filter(
+                          (x) =>
+                            !(headItems.includes(i) && headItems.includes(x)),
+                        );
+                        update({ accessories: [...next, i] });
+                      }}
                     >
-                      <Headphones size={22} />
-                      <span>{a}</span>
-                      <span className="toggle-switch" />
+                      {(() => {
+                        const Icon = accessoryIcons[i];
+                        return (
+                          <Icon
+                            size={21}
+                            strokeWidth={1.8}
+                            aria-hidden="true"
+                          />
+                        );
+                      })()}
+                      <span>
+                        {a}
+                        {i === 0 && config.base === "masc"
+                          ? " · já incluído"
+                          : ""}
+                      </span>
+                      <span className="toggle-switch" aria-hidden="true" />
                     </button>
                   ))}
                 </div>
@@ -488,6 +549,7 @@ export default function AvatarEditor({
                       onClick={() =>
                         update({
                           ...p.config,
+                          hair: 0,
                           displayName: config.displayName,
                           pronoun: config.pronoun,
                         })
@@ -516,7 +578,7 @@ export default function AvatarEditor({
                   ...p.config,
                   displayName: config.displayName,
                   skin: Math.floor(Math.random() * 7),
-                  hair: Math.floor(Math.random() * 14),
+                  hair: 0,
                 });
               }}
             >

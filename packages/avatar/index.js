@@ -83,7 +83,7 @@ export const defaultAvatar = {
   bottom: 0,
   bottomColor: 2,
   shoes: 0,
-  accessories: [0],
+  accessories: [],
   height: 1,
   body: 1,
   face: 1,
@@ -186,7 +186,7 @@ export const manifest = {
     { id: "fem", label: "Willow", url: "/avatars/meshy/willow.glb" },
   ],
   anchorPoints: ["head", "torso", "leftHand", "rightHand", "leftWrist", "back"],
-  hairs: hairs.map((label, id) => ({
+  hairs: hairs.slice(0, 1).map((label, id) => ({
     id,
     category: "hair",
     label,

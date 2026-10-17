@@ -1509,7 +1509,7 @@ button:not(:disabled):active {
 }
 .base-options {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 25px;
 }
@@ -1530,6 +1530,35 @@ button:not(:disabled):active {
 }
 .base-options button > svg:first-child {
   color: #82a6cd;
+}
+.base-avatar {
+  position: relative;
+  display: flex;
+  width: 34px;
+  height: 38px;
+  align-items: flex-end;
+  justify-content: center;
+}
+.base-avatar:before {
+  position: absolute;
+  top: 1px;
+  left: 11px;
+  width: 12px;
+  height: 13px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f0c9a5, #9b6a4c);
+  content: "";
+}
+.base-avatar span {
+  width: 28px;
+  height: 21px;
+  border-radius: 12px 12px 5px 5px;
+  background: linear-gradient(135deg, #5fa4d1, #273c58);
+}
+.base-avatar-fem span {
+  width: 24px;
+  border-radius: 10px 10px 6px 6px;
+  background: linear-gradient(135deg, #c88a9b, #684b68);
 }
 .base-options button > svg:last-child:not(:first-child) {
   position: absolute;
@@ -1684,6 +1713,13 @@ button:not(:disabled):active {
 .accessory-list button.selected {
   color: #b5daf6;
   border-color: #4f8fc45e;
+}
+.accessory-list button > svg {
+  flex: 0 0 22px;
+  color: #91b4d8;
+}
+.accessory-list button.selected > svg {
+  color: #72c5ff;
 }
 .toggle-switch {
   width: 26px;

@@ -4,11 +4,42 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame, createPortal } from "@react-three/fiber";
 import * as THREE from "three";
 import { clone } from "three/addons/utils/SkeletonUtils.js";
-import { skins, type AvatarConfig } from "@/lib/avatars";
+import { type AvatarConfig } from "@/lib/avatars";
 import { avatarMaterial } from "./meshMaterials";
-import { Hair } from "./AvatarParts";
 import AvatarAccessories from "./AvatarAccessories";
 export type Pose = "idle" | "walk" | "run" | "sit";
+function FaceEyes({
+  color,
+  positions,
+}: {
+  color: string;
+  positions: [THREE.Vector3, THREE.Vector3];
+}) {
+  return (
+    <group>
+      {positions.map((position, index) => (
+        <group key={index} position={position}>
+          <mesh scale={[0.043, 0.054, 0.019]} castShadow>
+            <sphereGeometry args={[1, 24, 18]} />
+            <meshStandardMaterial color="#fbf7ef" roughness={0.35} />
+          </mesh>
+          <mesh position={[0, 0, 0.017]} scale={[0.022, 0.032, 0.011]}>
+            <sphereGeometry args={[1, 20, 16]} />
+            <meshStandardMaterial color={color} roughness={0.32} />
+          </mesh>
+          <mesh position={[0, 0, 0.025]} scale={[0.01, 0.02, 0.007]}>
+            <sphereGeometry args={[1, 16, 12]} />
+            <meshStandardMaterial color="#111820" roughness={0.25} />
+          </mesh>
+          <mesh position={[-0.006, 0.012, 0.031]} scale={[0.005, 0.007, 0.004]}>
+            <sphereGeometry args={[1, 12, 8]} />
+            <meshBasicMaterial color="#ffffff" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
 function Model({ config, pose }: { config: AvatarConfig; pose: Pose }) {
   const id = config.base === "fem" ? "willow" : "central";
   const asset = useGLTF(`/avatars/meshy/${id}.glb`);
@@ -59,6 +90,35 @@ function Model({ config, pose }: { config: AvatarConfig; pose: Pose }) {
         0.1,
       ]),
     };
+    scene.updateMatrixWorld(true);
+    anchors.head.updateMatrixWorld(true);
+    const eyePositions = ([-1, 1] as const).map((side) => {
+      const targetX = side * 0.105;
+      let front = -Infinity;
+      scene.traverse((object) => {
+        if (!(object as THREE.Mesh).isMesh) return;
+        const mesh = object as THREE.Mesh;
+        const position = mesh.geometry.getAttribute("position");
+        if (!position) return;
+        for (let i = 0; i < position.count; i++) {
+          const point = new THREE.Vector3().fromBufferAttribute(position, i);
+          mesh.localToWorld(point);
+          scene.worldToLocal(point);
+          if (
+            Math.abs(point.x - targetX) < 0.035 &&
+            Math.abs(point.y - 1.975) < 0.045
+          )
+            front = Math.max(front, point.z);
+        }
+      });
+      const surface = new THREE.Vector3(
+        targetX,
+        1.975,
+        (Number.isFinite(front) ? front : 0.2) + 0.012,
+      );
+      scene.localToWorld(surface);
+      return anchors.head.worldToLocal(surface);
+    }) as [THREE.Vector3, THREE.Vector3];
     return {
       scene,
       paint,
@@ -67,6 +127,7 @@ function Model({ config, pose }: { config: AvatarConfig; pose: Pose }) {
       headAnchor: anchors.head,
       anchors,
       bones,
+      eyePositions,
     };
   }, [asset, id]);
   useLayoutEffect(() => {
@@ -104,43 +165,7 @@ function Model({ config, pose }: { config: AvatarConfig; pose: Pose }) {
       <primitive object={instance.scene} dispose={null} />
       <AvatarAccessories config={config} anchors={instance.anchors} />
       {createPortal(
-        <group>
-          {config.hair > 0 && (
-            <group scale={0.7}>
-              <mesh position={[0, 0.14, -0.02]}>
-                <sphereGeometry
-                  args={[0.41, 28, 20, 0, Math.PI * 2, 0, Math.PI / 2]}
-                />
-                <meshStandardMaterial color={skins[config.skin]} />
-              </mesh>
-              <Hair config={config} />
-            </group>
-          )}
-          {config.glasses > 0 && (
-            <group position={[0, -0.03, 0.285]}>
-              {[-1, 1].map((sign) => (
-                <mesh
-                  key={sign}
-                  position={[sign * 0.13, 0, 0]}
-                  scale={[1, config.glasses === 3 ? 0.65 : 1, 1]}
-                >
-                  <torusGeometry
-                    args={[0.079, 0.009, 8, config.glasses === 2 ? 4 : 32]}
-                  />
-                  <meshStandardMaterial
-                    color="#253346"
-                    metalness={0.45}
-                    roughness={0.3}
-                  />
-                </mesh>
-              ))}
-              <mesh>
-                <boxGeometry args={[0.09, 0.012, 0.01]} />
-                <meshStandardMaterial color="#253346" />
-              </mesh>
-            </group>
-          )}
-        </group>,
+        <FaceEyes color={config.eyes} positions={instance.eyePositions} />,
         instance.headAnchor,
       )}
     </group>
