@@ -12,7 +12,7 @@ async function waitFor(fn) {
   throw new Error("Estado multiplayer não sincronizou");
 }
 test("dois clientes recebem presença, avatar, movimento e remoção", async () => {
-  const c = new Client("http://127.0.0.1:2567");
+  const c = new Client(process.env.GAME_TEST_URL || "http://127.0.0.1:2567");
   const a = await c.joinOrCreate("office", {
     officeId: "azzo-hq",
     userId: "test_a",
@@ -29,6 +29,10 @@ test("dois clientes recebem presença, avatar, movimento e remoção", async () 
       () => a.state.players?.size === 2 && b.state.players?.size === 2,
     );
     assert.equal(JSON.parse(a.state.players.get(b.sessionId).avatar).hair, 6);
+    const pa = a.state.players.get(a.sessionId);
+    const pb = a.state.players.get(b.sessionId);
+    assert.ok(Math.hypot(pa.x - pb.x, pa.z - pb.z) >= 1.3);
+    assert.equal(pb.y, 0);
     b.send("avatar", { ...defaultAvatar, displayName: "Bruno", glasses: 4 });
     await waitFor(
       () => JSON.parse(a.state.players.get(b.sessionId).avatar).glasses === 4,
@@ -53,7 +57,7 @@ test("dois clientes recebem presença, avatar, movimento e remoção", async () 
   }
 });
 test("nega entrada demo em outra empresa e identidade inválida", async () => {
-  const c = new Client("http://127.0.0.1:2567");
+  const c = new Client(process.env.GAME_TEST_URL || "http://127.0.0.1:2567");
   await assert.rejects(() =>
     c.joinOrCreate("office", { officeId: "empresa-alheia", userId: "test_a" }),
   );

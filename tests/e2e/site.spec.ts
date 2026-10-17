@@ -61,7 +61,7 @@ test("avatar 3D editável, persistência e escritório", async ({ page }) => {
   await page.goto("/avatar?demo=1");
   await expect(page.locator("canvas")).toBeVisible();
   await page.waitForTimeout(2000);
-  await page.getByRole("button", { name: "Feminino", exact: true }).click();
+  await page.getByRole("button", { name: "Willow", exact: true }).click();
   await page.getByLabel("Nome exibido").fill("Ana AZZO");
   await page.getByRole("button", { name: "Cabelo", exact: true }).click();
   await page.getByRole("button", { name: "Undercut", exact: true }).click();

@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "coordinateSystem": "Y-up, forward +Z, ground Y=0",
+  "heightMeters": 2.4,
+  "productionReady": false,
+  "models": [
+    {
+      "id": "central",
+      "file": "central.glb",
+      "source": {
+        "filename": "Meshy_AI_Extract_the_central_m_1016144934_generate.fbx",
+        "sha256": "89d0fa1976c63df446d327207cf07abebd801981c357d490f026328019bff97f",
+        "vertices": 46041,
+        "triangles": 92090,
+        "uvLayers": 0,
+        "materials": 0,
+        "vertexGroups": 0,
+        "armatures": 0,
+        "animations": 0,
+        "images": 0
+      },
+      "bytes": 1658888,
+      "sha256": "ede94e43188e59012c4b78fa8493d5260d7fdfbcee488616406bfc52a023e8fb",
+      "capabilities": {
+        "renderable": true,
+        "rigged": false,
+        "animated": false,
+        "modularHair": false,
+        "modularClothing": false,
+        "textured": false
+      },
+      "bounds": {
+        "height": 2.4,
+        "width": 0.8131500887954966,
+        "depth": 0.6780567729551075
+      }
+    },
+    {
+      "id": "willow",
+      "file": "willow.glb",
+      "source": {
+        "filename": "Meshy_AI_Willow_Doll_1016144851_generate.fbx",
+        "sha256": "e0e6c012095c7fb218a7e4a4ab95beb8e2c8951c897845c3d70b49d1ecd40c9a",
+        "vertices": 70177,
+        "triangles": 140418,
+        "uvLayers": 0,
+        "materials": 0,
+        "vertexGroups": 0,
+        "armatures": 0,
+        "animations": 0,
+        "images": 0
+      },
+      "bytes": 3370624,
+      "sha256": "960998e359da28ff39a18150152cf603a21ce2d7b254c0ccc3dad8832f24c89e",
+      "capabilities": {
+        "renderable": true,
+        "rigged": false,
+        "animated": false,
+        "modularHair": false,
+        "modularClothing": false,
+        "textured": false
+      },
+      "bounds": {
+        "height": 2.4,
+        "width": 1.3263098014247987,
+        "depth": 0.812039436258905
+      }
+    }
+  ]
+}

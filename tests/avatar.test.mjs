@@ -37,6 +37,10 @@ test("rejeita payloads, IDs e dimensões inválidas", () => {
     url: "https://malicious.example/avatar.glb",
   });
   assert.equal(sanitized.url, undefined);
+  assert.equal(
+    validateAvatar({ ...defaultAvatar, base: "custom" }).base,
+    "masc",
+  );
   assert.equal(validateAvatar({ huge: "a".repeat(3000) }), null);
 });
 test("colisões de mesas, paredes internas e espaço livre", () => {

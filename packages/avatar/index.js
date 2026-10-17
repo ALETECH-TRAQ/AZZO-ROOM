@@ -27,7 +27,7 @@ export const clothingColors = [
   "#484b57",
 ];
 export const hairs = [
-  "Clássico",
+  "Original da base",
   "Lateral",
   "Despenteado",
   "Ondulado curto",
@@ -54,9 +54,9 @@ export const glasses = [
 export const tops = [
   "Camisa social",
   "Blazer",
-  "Polo",
-  "Business casual",
-  "Executivo",
+  "Camiseta",
+  "Moletom",
+  "Jaqueta",
 ];
 export const accessories = [
   "Crachá",
@@ -64,10 +64,13 @@ export const accessories = [
   "Mochila",
   "Café",
   "Smartwatch",
+  "Boné",
+  "Chapéu",
+  "Colar",
 ];
 export const defaultAvatar = {
   schemaVersion: 1,
-  base: "custom",
+  base: "masc",
   displayName: "Meu avatar",
   pronoun: "",
   skin: 2,
@@ -159,28 +162,36 @@ export function validateAvatar(value) {
       return null;
   if (
     !Array.isArray(v.accessories) ||
-    v.accessories.length > 5 ||
+    v.accessories.length > 8 ||
     new Set(v.accessories).size !== v.accessories.length ||
-    v.accessories.some((i) => !Number.isInteger(i) || i < 0 || i > 4)
+    v.accessories.some((i) => !Number.isInteger(i) || i < 0 || i > 7)
   )
     return null;
-  return Object.fromEntries(
+  const sanitized = Object.fromEntries(
     Object.keys(defaultAvatar).map((k) => [
       k,
       k === "displayName" ? v[k].trim() : v[k],
     ]),
   );
+  // Older profiles used a third procedural base. Keep those profiles valid,
+  // while rendering them with one of the two official Meshy characters.
+  if (sanitized.base === "custom") sanitized.base = "masc";
+  return sanitized;
 }
 export const manifest = {
-  version: 1,
-  renderer: "procedural",
+  version: 2,
+  renderer: "meshy-glb",
+  bases: [
+    { id: "masc", label: "Central", url: "/avatars/meshy/central.glb" },
+    { id: "fem", label: "Willow", url: "/avatars/meshy/willow.glb" },
+  ],
   anchorPoints: ["head", "torso", "leftHand", "rightHand", "leftWrist", "back"],
   hairs: hairs.map((label, id) => ({
     id,
     category: "hair",
     label,
     variant: id,
-    compatibility: ["masc", "fem", "custom"],
+    compatibility: ["masc", "fem"],
     anchor: "head",
     url: null,
   })),
@@ -189,7 +200,7 @@ export const manifest = {
     category: "top",
     label,
     variant: id,
-    compatibility: ["masc", "fem", "custom"],
+    compatibility: ["masc", "fem"],
     anchor: "torso",
     url: null,
   })),

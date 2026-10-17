@@ -301,10 +301,10 @@ export default function AvatarEditor({
               <>
                 <h3>Seu ponto de partida</h3>
                 <p className="option-description">
-                  Escolha um modelo e combine qualquer peça livremente.
+                  Escolha uma das duas bases e personalize seu visual.
                 </p>
                 <div className="base-options">
-                  {(["masc", "fem", "custom"] as const).map((b, i) => (
+                  {(["masc", "fem"] as const).map((b, i) => (
                     <button
                       aria-pressed={config.base === b}
                       className={config.base === b ? "selected" : ""}
@@ -312,15 +312,13 @@ export default function AvatarEditor({
                       onClick={() =>
                         update({
                           base: b,
-                          hair: b === "fem" ? 7 : 0,
-                          body: b === "fem" ? 0.95 : 1,
+                          hair: 0,
+                          body: 1,
                         })
                       }
                     >
                       <UserRound size={25} />
-                      <span>
-                        {["Masculino", "Feminino", "Personalizado"][i]}
-                      </span>
+                      <span>{["Central", "Willow"][i]}</span>
                       {config.base === b && <Check size={14} />}
                     </button>
                   ))}
@@ -442,7 +440,7 @@ export default function AvatarEditor({
                 <h3>Cor da roupa</h3>
                 {swatches(clothingColors, "topColor")}
                 <h3>Parte de baixo</h3>
-                {choices(["Calça", "Saia"], "bottom")}
+                {choices(["Calça", "Shorts"], "bottom")}
                 <h3>Cor da parte de baixo</h3>
                 {swatches(clothingColors, "bottomColor")}
                 <h3>Calçado</h3>

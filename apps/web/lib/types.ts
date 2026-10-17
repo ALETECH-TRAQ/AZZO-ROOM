@@ -1,6 +1,7 @@
 import type { AvatarConfig } from "@azzo/avatar";
 export type Position = {
   x: number;
+  y?: number;
   z: number;
   yaw: number;
   animation?: string;

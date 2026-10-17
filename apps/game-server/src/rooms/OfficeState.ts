@@ -8,6 +8,7 @@ export const Player = schema(
     animation: t.string().default("idle"),
     color: t.string().default("#66ddce"),
     x: t.number().default(0),
+    y: t.number().default(0),
     z: t.number().default(5),
     yaw: t.number().default(0),
   },

@@ -28,6 +28,11 @@ import VoiceManager from "./VoiceManager";
 import Link from "next/link";
 import { loadAvatar, type AvatarConfig } from "@/lib/avatars";
 import { getSupabase } from "@/lib/auth/client";
+import {
+  remotePlayers,
+  networkLog,
+  type NetworkState,
+} from "@/lib/multiplayer";
 const OfficeWorld = dynamic(() => import("./OfficeWorld"), {
   ssr: false,
   loading: () => (
@@ -54,6 +59,9 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
   const posRef = useRef<Position>({ x: 0, z: 5, yaw: 0 });
   const [mediaMode, setMediaMode] = useState<MediaMode | null>(null);
   const roomRef = useRef<Room | null>(null);
+  const [networkSpawn, setNetworkSpawn] = useState<
+    (Position & { sessionId: string }) | null
+  >(null);
   const near = isNearMeeting(position);
 
   useEffect(() => {
@@ -108,105 +116,200 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
   useEffect(() => {
     if (!joined || !userId) return;
     let disposed = false;
-    let handle: ReturnType<typeof setInterval> | undefined;
-    setConnection("Conectando...");
+    let connecting = false;
+    let attempts = 0;
+    let activeRoom: Room | null = null;
+    let sendTimer: ReturnType<typeof setInterval> | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const stopSending = () => {
+      if (sendTimer) clearInterval(sendTimer);
+      sendTimer = undefined;
+    };
+    const current = (room: Room) => !disposed && activeRoom === room;
+    const scheduleRetry = () => {
+      if (disposed || retryTimer) return;
+      const delay = Math.min(1000 * 2 ** Math.min(attempts++, 4), 15000);
+      setConnection("Reconectando…");
+      networkLog("retry", { officeId, delay });
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        void connect();
+      }, delay);
+    };
     const connect = async () => {
+      if (disposed || connecting || activeRoom) return;
+      connecting = true;
+      setConnection(attempts ? "Reconectando…" : "Conectando...");
       try {
-        const game = new Client(
+        const endpoint =
           process.env.NEXT_PUBLIC_GAME_SERVER_URL ||
-            `${location.protocol}//${location.hostname}:2567`,
-        );
+          (process.env.NODE_ENV === "development"
+            ? `${location.protocol}//${location.hostname}:2567`
+            : "");
+        if (!endpoint) {
+          setConnection("Servidor multiplayer não configurado");
+          return;
+        }
+        const session = demo
+          ? null
+          : (await getSupabase()?.auth.getSession())?.data.session;
+        if (!demo && !session) {
+          setConnection("Sessão expirada. Entre novamente.");
+          return;
+        }
+        if (disposed) return;
+        const game = new Client(endpoint);
         const room = await game.joinOrCreate("office", {
           officeId,
           userId,
           name,
           color,
           avatar,
-          accessToken,
+          accessToken: session?.access_token || accessToken,
         });
         if (disposed) {
-          await room.leave();
+          void room.leave();
           return;
         }
+        activeRoom = room;
         roomRef.current = room;
-        setConnection("Online");
+        // A network interruption immediately after joining must also reconnect.
+        room.reconnection.minUptime = 0;
+        let receivedInitialState = false;
+        let previousSessions = new Set<string>();
+        let lastPositionLog = 0;
         const updatePlayers = () => {
-          const result: OnlinePlayer[] = [];
-          // O protocolo Schema expõe MapSchema; a fonte oficial é o estado do servidor.
-          const map = (
-            room.state as unknown as {
-              players: Map<
-                string,
-                {
-                  userId: string;
-                  name: string;
-                  color: string;
-                  x: number;
-                  z: number;
-                  yaw: number;
-                  avatar: string;
-                  animation: string;
-                }
-              >;
-            }
-          ).players;
-          map?.forEach((p, sessionId) => {
-            if (p.userId !== userId)
-              result.push({
-                sessionId,
-                userId: p.userId,
-                name: p.name,
-                color: p.color,
+          if (!current(room)) return;
+          const state = room.state as NetworkState;
+          const own = state.players?.get(room.sessionId);
+          if (!own) return; // JOIN_ROOM can precede the initial full state packet.
+          if (!receivedInitialState) {
+            receivedInitialState = true;
+            attempts = 0;
+            const spawn = {
+              sessionId: room.sessionId,
+              x: own.x,
+              y: own.y || 0,
+              z: own.z,
+              yaw: own.yaw,
+            };
+            posRef.current = spawn;
+            setNetworkSpawn(spawn);
+            setConnection("Online");
+            networkLog("connected", {
+              officeId,
+              roomId: room.roomId,
+              sessionId: room.sessionId,
+              userId,
+            });
+          }
+          const result = remotePlayers(state, room.sessionId);
+          const nextSessions = new Set(result.map((p) => p.sessionId));
+          for (const id of nextSessions)
+            if (!previousSessions.has(id))
+              networkLog("player-enter", { officeId, sessionId: id });
+          for (const id of previousSessions)
+            if (!nextSessions.has(id))
+              networkLog("player-leave", { officeId, sessionId: id });
+          previousSessions = nextSessions;
+          if (Date.now() - lastPositionLog > 5000) {
+            networkLog("state", {
+              roomId: room.roomId,
+              total: state.players?.size,
+              remote: result.map((p) => ({
+                sessionId: p.sessionId,
                 x: p.x,
+                y: p.y,
                 z: p.z,
-                yaw: p.yaw,
-                avatar: JSON.parse(p.avatar || "null"),
                 animation: p.animation,
-              });
-          });
+              })),
+            });
+            lastPositionLog = Date.now();
+          }
           setPlayers(result);
         };
-        room.onDrop(() => {
-          if (!disposed) setConnection("Reconectando…");
-        });
-        room.onReconnect(() => {
-          if (!disposed) setConnection("Online");
-        });
         room.onStateChange(updatePlayers);
-        updatePlayers();
-        room.onLeave(() => {
-          if (!disposed) {
-            setConnection("Conexão encerrada");
-            setPlayers([]);
+        room.onDrop(() => {
+          if (current(room)) {
+            setConnection("Reconectando…");
+            networkLog("drop", {
+              roomId: room.roomId,
+              sessionId: room.sessionId,
+            });
           }
         });
-        room.onError((_code, message) => {
-          if (!disposed) setConnection(`Erro: ${message}`);
+        room.onReconnect(() => {
+          if (current(room)) {
+            setConnection("Online");
+            updatePlayers();
+            networkLog("reconnected", {
+              roomId: room.roomId,
+              sessionId: room.sessionId,
+            });
+          }
         });
-        handle = setInterval(() => {
-          room.send("move", posRef.current);
+        room.onLeave((code) => {
+          if (!current(room)) return;
+          stopSending();
+          networkLog("disconnected", { officeId, roomId: room.roomId, code });
+          activeRoom = null;
+          if (roomRef.current === room) roomRef.current = null;
+          setPlayers([]);
+          scheduleRetry();
+        });
+        room.onError((code) => {
+          if (current(room)) {
+            console.warn("[AZZO multiplayer] room-error", {
+              officeId,
+              roomId: room.roomId,
+              code,
+            });
+            setConnection("Falha na conexão multiplayer");
+          }
+        });
+        updatePlayers();
+        sendTimer = setInterval(() => {
+          if (current(room) && receivedInitialState && room.connection.isOpen)
+            room.send("move", { ...posRef.current, y: 0 });
         }, 100);
-      } catch (e) {
-        if (!disposed)
-          setConnection(
-            e instanceof Error ? e.message : "Servidor não disponível",
-          );
+      } catch (error) {
+        if (!disposed) {
+          console.warn("[AZZO multiplayer] connection-failed", {
+            officeId,
+            code: (error as { code?: number }).code,
+          });
+          scheduleRetry();
+        }
+      } finally {
+        connecting = false;
       }
     };
+    const online = () => {
+      if (!activeRoom && !connecting) {
+        if (retryTimer) clearTimeout(retryTimer);
+        retryTimer = undefined;
+        void connect();
+      }
+    };
+    window.addEventListener("online", online);
     void connect();
     return () => {
       disposed = true;
-      if (handle) clearInterval(handle);
-      if (roomRef.current) {
-        void roomRef.current.leave();
-        roomRef.current = null;
+      window.removeEventListener("online", online);
+      stopSending();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (activeRoom) {
+        activeRoom.reconnection.enabled = false;
+        if (roomRef.current === activeRoom) roomRef.current = null;
+        void activeRoom.leave();
       }
       setPlayers([]);
     };
-  }, [joined, userId, name, color, officeId, accessToken]);
+  }, [joined, userId, name, color, officeId, accessToken, demo]);
 
   useEffect(() => {
-    if (avatar && roomRef.current) roomRef.current.send("avatar", avatar);
+    if (avatar && roomRef.current?.connection.isOpen)
+      roomRef.current.send("avatar", avatar);
   }, [avatar]);
   useEffect(() => {
     const refresh = () => {
@@ -261,6 +364,7 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
           avatar={avatar}
           players={players}
           onPosition={onPosition}
+          networkSpawn={networkSpawn}
         />
       </div>
       <header className="topbar">
@@ -339,7 +443,16 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
             <span className="live-dot" />
           </div>
           {players.map((p) => (
-            <div className="person" key={p.sessionId}>
+            <div
+              className="person"
+              key={p.sessionId}
+              data-player-session={p.sessionId}
+              data-player-x={p.x}
+              data-player-z={p.z}
+              data-player-yaw={p.yaw}
+              data-player-animation={p.animation}
+              data-avatar-base={p.avatar?.base || "masc"}
+            >
               <span
                 className="person-avatar"
                 style={{ backgroundColor: p.color }}

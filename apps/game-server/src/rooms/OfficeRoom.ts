@@ -1,7 +1,12 @@
 import { Room, type Client } from "colyseus";
 import { OfficeState, Player } from "./OfficeState.js";
 
-import { validateAvatar, defaultAvatar, resolveMovement } from "@azzo/avatar";
+import {
+  validateAvatar,
+  defaultAvatar,
+  resolveMovement,
+  collides,
+} from "@azzo/avatar";
 import { authorize } from "../auth/session.js";
 
 type JoinOptions = {
@@ -26,8 +31,38 @@ export class OfficeRoom extends Room {
   private lastPositionTime = new Map<string, number>();
   private officeId = "";
 
+  private log(event: string, client?: Client) {
+    console.info(
+      "[AZZO multiplayer]",
+      JSON.stringify({
+        event,
+        officeId: this.officeId,
+        roomId: this.roomId,
+        sessionId: client?.sessionId,
+        players: this.state.players.size,
+      }),
+    );
+  }
+
+  private spawn() {
+    const occupied = [...this.state.players.values()];
+    for (const z of [5, 3.4, 6.6, 1.8, 8]) {
+      for (const x of [
+        0, -1.6, 1.6, -3.2, 3.2, -4.8, 4.8, -6.4, 6.4, -8, 8, -9.6, 9.6,
+      ]) {
+        if (
+          !collides(x, z) &&
+          occupied.every((p) => Math.hypot(p.x - x, p.z - z) >= 1.3)
+        )
+          return { x, z };
+      }
+    }
+    return { x: 0, z: 5 };
+  }
+
   onCreate(options: JoinOptions) {
     this.officeId = options.officeId ?? "azzo-hq";
+    this.log("room-created");
   }
 
   async onAuth(client: Client, options: JoinOptions) {
@@ -62,10 +97,13 @@ export class OfficeRoom extends Room {
     p.color = VALID_COLOR.test(options.color ?? "")
       ? options.color!
       : "#66ddce";
-    p.x = 0;
-    p.z = 5;
+    const spawn = this.spawn();
+    p.x = spawn.x;
+    p.y = 0; // This office has a single walkable floor. Clients cannot fly.
+    p.z = spawn.z;
     this.state.players.set(client.sessionId, p);
     this.lastPositionTime.set(client.sessionId, Date.now());
+    this.log("joined", client);
   }
 
   messages = {
@@ -114,11 +152,20 @@ export class OfficeRoom extends Room {
   };
 
   async onDrop(client: Client) {
-    await this.allowReconnection(client, 15);
+    this.log("dropped", client);
+    try {
+      await this.allowReconnection(client, 15);
+      this.lastPositionTime.set(client.sessionId, Date.now());
+      this.log("reconnected", client);
+    } catch {
+      // Colyseus calls onLeave after this reservation expires.
+      this.log("reconnection-expired", client);
+    }
   }
 
   onLeave(client: Client) {
     this.state.players.delete(client.sessionId);
     this.lastPositionTime.delete(client.sessionId);
+    this.log("left", client);
   }
 }

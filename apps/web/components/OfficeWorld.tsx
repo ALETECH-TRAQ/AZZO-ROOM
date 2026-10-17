@@ -1,13 +1,14 @@
 "use client";
 import { Html } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { CameraMode, OnlinePlayer, Position } from "@/lib/types";
 import AvatarRenderer, { type Pose } from "./avatar/AvatarRenderer";
 import { defaultAvatar, type AvatarConfig, collides } from "@azzo/avatar";
 import { MEETING_CENTER } from "@/lib/types";
 import SimsCamera from "./SimsCamera";
+import { networkLog } from "@/lib/multiplayer";
 
 type Props = {
   mode: CameraMode;
@@ -15,6 +16,7 @@ type Props = {
   avatar: AvatarConfig | null;
   players: OnlinePlayer[];
   onPosition: (position: Position) => void;
+  networkSpawn?: (Position & { sessionId: string }) | null;
 };
 
 function dampAngle(
@@ -336,11 +338,27 @@ function OfficeEnvironment() {
 
 function RemoteAvatar({ player }: { player: OnlinePlayer }) {
   const ref = useRef<THREE.Group>(null);
+  // Stable JSX position prevents network renders from bypassing interpolation.
+  const [initialPosition] = useState<[number, number, number]>(() => [
+    player.x,
+    player.y || 0,
+    player.z,
+  ]);
+  useEffect(() => {
+    networkLog("remote-rendered", { sessionId: player.sessionId });
+    return () => networkLog("remote-removed", { sessionId: player.sessionId });
+  }, [player.sessionId]);
   useFrame((_, delta) => {
     if (!ref.current) return;
     ref.current.position.x = THREE.MathUtils.damp(
       ref.current.position.x,
       player.x,
+      12,
+      delta,
+    );
+    ref.current.position.y = THREE.MathUtils.damp(
+      ref.current.position.y,
+      player.y || 0,
       12,
       delta,
     );
@@ -358,7 +376,16 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
     );
   });
   return (
-    <group ref={ref} position={[player.x, 0, player.z]}>
+    <group
+      ref={ref}
+      name={`remote-player:${player.sessionId}`}
+      userData={{
+        sessionId: player.sessionId,
+        target: [player.x, player.y || 0, player.z],
+        animation: player.animation,
+      }}
+      position={initialPosition}
+    >
       <AvatarRenderer
         config={player.avatar || defaultAvatar}
         pose={(player.animation || "idle") as Pose}
@@ -369,7 +396,17 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
         distanceFactor={14}
         style={{ pointerEvents: "none" }}
       >
-        <span className="player-label">{player.name}</span>
+        <span
+          className="player-label"
+          data-player-session={player.sessionId}
+          data-player-x={player.x}
+          data-player-z={player.z}
+          data-player-yaw={player.yaw}
+          data-player-animation={player.animation}
+          data-avatar-base={(player.avatar || defaultAvatar).base}
+        >
+          {player.name}
+        </span>
       </Html>
     </group>
   );
@@ -380,11 +417,13 @@ function Controller({
   color,
   avatar,
   onPosition,
+  networkSpawn,
 }: {
   mode: CameraMode;
   color: string;
   avatar: AvatarConfig | null;
   onPosition: (position: Position) => void;
+  networkSpawn?: (Position & { sessionId: string }) | null;
 }) {
   const { camera, gl } = useThree();
   const keys = useRef(new Set<string>());
@@ -402,6 +441,18 @@ function Controller({
   const cameraForward = useMemo(() => new THREE.Vector3(), []);
   const cameraRight = useMemo(() => new THREE.Vector3(), []);
   modeRef.current = mode;
+
+  useLayoutEffect(() => {
+    if (!networkSpawn) return;
+    local.current = {
+      x: networkSpawn.x,
+      y: 0,
+      z: networkSpawn.z,
+      yaw: networkSpawn.yaw,
+      animation: "idle",
+    };
+    model.current?.position.set(networkSpawn.x, 0, networkSpawn.z);
+  }, [networkSpawn]);
 
   useEffect(() => {
     if (mode !== "third") rotatingCamera.current = false;
@@ -573,7 +624,7 @@ function Controller({
   });
   return (
     <>
-      <group ref={model} position={[0, 0, 5]}>
+      <group ref={model} name="local-player" position={[0, 0, 5]}>
         <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
       </group>
       <SimsCamera active={mode === "iso"} positionRef={local} />
@@ -600,6 +651,7 @@ export default function OfficeWorld({
   avatar,
   players,
   onPosition,
+  networkSpawn,
 }: Props) {
   const initialCamera = useMemo(
     () => ({
@@ -632,6 +684,7 @@ export default function OfficeWorld({
         color={color}
         avatar={avatar}
         onPosition={onPosition}
+        networkSpawn={networkSpawn}
       />
     </Canvas>
   );

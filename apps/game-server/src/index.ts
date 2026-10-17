@@ -27,7 +27,11 @@ const server = defineServer({
   }),
   express: (app) => {
     app.get("/healthz", (_req: ExpressRequest, res: ExpressResponse) =>
-      res.json({ status: "ok", service: "azzo-room-game" }),
+      res.json({
+        status: "ok",
+        service: "azzo-room-game",
+        revision: process.env.RENDER_GIT_COMMIT || "local",
+      }),
     );
     app.get("/readyz", (_req: ExpressRequest, res: ExpressResponse) => {
       const configured = Boolean(
@@ -42,6 +46,12 @@ const server = defineServer({
   },
   rooms: { office: defineRoom(OfficeRoom).filterBy(["officeId"]) },
 });
+const missing = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "ALLOWED_ORIGINS"].filter(
+  (key) => !process.env[key]?.trim(),
+);
+if (process.env.NODE_ENV === "production" && missing.length) {
+  console.error("[AZZO multiplayer] missing-configuration", { missing });
+}
 const port = Number(process.env.PORT || 2567);
 server.listen(port, "0.0.0.0");
 console.log(`[AZZO ROOM] Multiplayer disponível na porta ${port}.`);

@@ -7,7 +7,7 @@ services:
     region: oregon
     dockerfilePath: ./deploy/Dockerfile.game-server
     dockerContext: .
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     envVars:
       - key: NODE_ENV
         value: production
