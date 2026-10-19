@@ -7,6 +7,7 @@ const fixtures = process.env.MULTIPLAYER_FIXTURES
 
 async function observe(page: Page) {
   await page.addInitScript(() => {
+    const observed = new WeakSet();
     const renderers = new Map();
     (window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
       supportsFiber: true,
@@ -26,8 +27,15 @@ async function observe(page: Page) {
         function visit(f: any) {
           if (!f) return;
           const state = f.memoizedProps?.value?.getState?.();
-          if (state?.scene && state?.gl)
+          if (state?.scene && state?.gl && !observed.has(state.gl)) {
+            observed.add(state.gl);
             (window as any).__networkScene = state.scene;
+            const original = state.gl.render;
+            state.gl.render = function (scene: any, camera: any) {
+              (window as any).__networkScene = scene;
+              return original.call(this, scene, camera);
+            };
+          }
           visit(f.child);
           visit(f.sibling);
         }
@@ -57,7 +65,12 @@ async function snapshot(p: Page) {
 }
 const remote = async (p: Page) =>
   (await snapshot(p)).find((o: any) => o.sessionId);
-async function enter(p: Page, index = 0, office = fixtures?.offices[0]) {
+async function enter(
+  p: Page,
+  index = 0,
+  office = fixtures?.offices[0],
+  view?: "isometric",
+) {
   if (fixtures) {
     await observe(p);
     await p.addInitScript(
@@ -85,9 +98,13 @@ async function enter(p: Page, index = 0, office = fixtures?.offices[0]) {
   await observe(p);
   await p.goto("/avatar?demo=1");
   await p.getByRole("button", { name: "Salvar avatar", exact: true }).click();
-  await p
-    .getByRole("button", { name: "Entrar no escritório", exact: true })
-    .click();
+  if (view) {
+    await p.goto(`/app?demo=1&view=${view}`);
+  } else {
+    await p
+      .getByRole("button", { name: "Entrar no escritório", exact: true })
+      .click();
+  }
   await expect(p.locator(".pill.online")).toHaveText("Online");
 }
 test("real sockets: late join, separate spawns, bidirectional movement, camera and rejoin", async ({
@@ -198,6 +215,86 @@ test("real sockets: late join, separate spawns, bidirectional movement, camera a
         b.locator(".people-card .person[data-player-session]"),
       ).toHaveCount(0);
     }
+  } finally {
+    await ca.close();
+    await cb.close();
+  }
+});
+
+test("isometric renderer: remote players enter, move and leave", async ({
+  browser,
+}) => {
+  test.setTimeout(120000);
+  const ca = await browser.newContext();
+  const cb = await browser.newContext();
+  const a = await ca.newPage();
+  const b = await cb.newPage();
+  try {
+    await enter(a, 0, fixtures?.offices[0], "isometric");
+    await enter(b, 1, fixtures?.offices[0], "isometric");
+    for (const p of [a, b]) {
+      await expect(p.locator(".pill.online")).toHaveText("Online");
+      await expect(p.locator(".people-card .person")).toHaveCount(2);
+      await expect
+        .poll(async () => {
+          return await p.evaluate(() => {
+            const scene = (window as any).__networkScene;
+            let found = false;
+            scene?.traverse?.((child: any) => {
+              if (String(child.name).startsWith("remote-player:")) found = true;
+            });
+            return found;
+          });
+        })
+        .toBe(true);
+    }
+    const before = await b.evaluate(() => {
+      const scene = (window as any).__networkScene;
+      let remote: any;
+      scene?.traverse?.((child: any) => {
+        if (!remote && String(child.name).startsWith("remote-player:"))
+          remote = child;
+      });
+      return remote ? [remote.position.x, remote.position.z] : null;
+    });
+    expect(before).not.toBeNull();
+    await a.keyboard.down("w");
+    try {
+      await expect
+        .poll(async () => {
+          const after = await b.evaluate(() => {
+            const scene = (window as any).__networkScene;
+            let remote: any;
+            scene?.traverse?.((child: any) => {
+              if (!remote && String(child.name).startsWith("remote-player:"))
+                remote = child;
+            });
+            return remote ? [remote.position.x, remote.position.z] : null;
+          });
+          if (!after || !before) return 0;
+          return Math.hypot(after[0] - before[0], after[1] - before[1]);
+        })
+        .toBeGreaterThan(0.25);
+    } finally {
+      await a.keyboard.up("w");
+    }
+    await expect.poll(async () => (await snapshot(b)).length).toBe(1);
+    await a.goto("about:blank");
+    await expect(b.locator(".people-card .person")).toHaveCount(1, {
+      timeout: 30000,
+    });
+    await expect
+      .poll(async () => {
+        return await b.evaluate(() => {
+          const scene = (window as any).__networkScene;
+          let found = false;
+          scene?.traverse?.((child: any) => {
+            if (String(child.name).startsWith("remote-player:")) found = true;
+          });
+          return found;
+        });
+      })
+      .toBe(false);
   } finally {
     await ca.close();
     await cb.close();
