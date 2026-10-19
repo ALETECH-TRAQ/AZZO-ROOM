@@ -49,6 +49,7 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
   const [meetings, setMeetings] = useState<{ id: string; title: string }[]>([]);
   const [meetingId, setMeetingId] = useState("");
   const [mode, setMode] = useState<CameraMode>("iso");
+  const [isometricPrototype, setIsometricPrototype] = useState(false);
   const [name, setName] = useState("Visitante");
   const [color, setColor] = useState(COLORS[0]);
   const [userId, setUserId] = useState("");
@@ -63,8 +64,18 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
     (Position & { sessionId: string }) | null
   >(null);
   const near = isNearMeeting(position);
+  const selectPrototype = (enabled: boolean) => {
+    const url = new URL(location.href);
+    if (enabled) url.searchParams.set("view", "isometric");
+    else url.searchParams.delete("view");
+    history.replaceState(null, "", url);
+    setIsometricPrototype(enabled);
+  };
 
   useEffect(() => {
+    setIsometricPrototype(
+      new URLSearchParams(location.search).get("view") === "isometric",
+    );
     const local = loadAvatar();
     if (!local) {
       location.replace("/avatar" + location.search);
@@ -340,7 +351,7 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
         e.target instanceof HTMLTextAreaElement
       )
         return;
-      if (e.key.toLowerCase() === "v")
+      if (e.key.toLowerCase() === "v" && !isometricPrototype)
         setMode((m) => (m === "iso" ? "third" : "iso"));
       if (
         e.key.toLowerCase() === "e" &&
@@ -352,13 +363,14 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
     };
     window.addEventListener("keydown", hotkey);
     return () => window.removeEventListener("keydown", hotkey);
-  }, [mediaMode]);
+  }, [mediaMode, isometricPrototype]);
   if (!avatar)
     return <main className="loading-page">Preparando seu escritório…</main>;
   return (
     <main className="app-shell">
       <div className="game-world">
         <OfficeWorld
+          isometricPrototype={isometricPrototype}
           mode={mode}
           color={color}
           avatar={avatar}
@@ -420,14 +432,44 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
             <span>
               <Camera size={16} /> Sua visualização
             </span>
-            <strong>{mode === "iso" ? "Isométrica" : "3ª pessoa"}</strong>
+            <strong>
+              {isometricPrototype
+                ? "Isométrica · protótipo"
+                : mode === "iso"
+                  ? "Isométrica"
+                  : "3ª pessoa"}
+            </strong>
           </div>
           <button
             className="button-primary full"
-            onClick={() => setMode((v) => (v === "iso" ? "third" : "iso"))}
+            onClick={() =>
+              isometricPrototype
+                ? selectPrototype(false)
+                : setMode((v) => (v === "iso" ? "third" : "iso"))
+            }
           >
-            <View size={17} /> Alternar câmera <kbd>V</kbd>
+            <View size={17} />{" "}
+            {isometricPrototype ? (
+              "Voltar à visão 3D"
+            ) : (
+              <>
+                Alternar câmera <kbd>V</kbd>
+              </>
+            )}
           </button>
+          {!isometricPrototype ? (
+            <button
+              className="secondary-button full"
+              onClick={() => selectPrototype(true)}
+            >
+              Testar visão isométrica
+            </button>
+          ) : (
+            <p className="muted">
+              Protótipo de câmera e controles. Cenário e avatares 3D
+              provisórios; arte 2D ainda não integrada.
+            </p>
+          )}
         </div>
         <div className="side-card people-card">
           <div className="card-title">
@@ -535,7 +577,7 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
           <span>Correr</span>
           <i />
           <kbd>V</kbd>
-          <span>Câmera</span>
+          <span>{isometricPrototype ? "Zoom" : "Câmera"}</span>
           <i />
           <kbd>E</kbd>
           <span>Interagir</span>

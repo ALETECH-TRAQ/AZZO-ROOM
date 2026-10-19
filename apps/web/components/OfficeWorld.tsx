@@ -8,9 +8,11 @@ import AvatarRenderer, { type Pose } from "./avatar/AvatarRenderer";
 import { defaultAvatar, type AvatarConfig, collides } from "@azzo/avatar";
 import { MEETING_CENTER } from "@/lib/types";
 import SimsCamera from "./SimsCamera";
+import IsoCamera from "./isometric/IsoCamera";
 import { networkLog } from "@/lib/multiplayer";
 
 type Props = {
+  isometricPrototype?: boolean;
   mode: CameraMode;
   color: string;
   avatar: AvatarConfig | null;
@@ -336,7 +338,13 @@ function OfficeEnvironment() {
   );
 }
 
-function RemoteAvatar({ player }: { player: OnlinePlayer }) {
+function RemoteAvatar({
+  player,
+  showLabel = true,
+}: {
+  player: OnlinePlayer;
+  showLabel?: boolean;
+}) {
   const ref = useRef<THREE.Group>(null);
   // Stable JSX position prevents network renders from bypassing interpolation.
   const [initialPosition] = useState<[number, number, number]>(() => [
@@ -390,35 +398,39 @@ function RemoteAvatar({ player }: { player: OnlinePlayer }) {
         config={player.avatar || defaultAvatar}
         pose={(player.animation || "idle") as Pose}
       />
-      <Html
-        position={[0, 2.8, 0]}
-        center
-        distanceFactor={14}
-        style={{ pointerEvents: "none" }}
-      >
-        <span
-          className="player-label"
-          data-player-session={player.sessionId}
-          data-player-x={player.x}
-          data-player-z={player.z}
-          data-player-yaw={player.yaw}
-          data-player-animation={player.animation}
-          data-avatar-base={(player.avatar || defaultAvatar).base}
+      {showLabel && (
+        <Html
+          position={[0, 2.8, 0]}
+          center
+          distanceFactor={14}
+          style={{ pointerEvents: "none" }}
         >
-          {player.name}
-        </span>
-      </Html>
+          <span
+            className="player-label"
+            data-player-session={player.sessionId}
+            data-player-x={player.x}
+            data-player-z={player.z}
+            data-player-yaw={player.yaw}
+            data-player-animation={player.animation}
+            data-avatar-base={(player.avatar || defaultAvatar).base}
+          >
+            {player.name}
+          </span>
+        </Html>
+      )}
     </group>
   );
 }
 
 function Controller({
+  isometricPrototype = false,
   mode,
   color,
   avatar,
   onPosition,
   networkSpawn,
 }: {
+  isometricPrototype?: boolean;
   mode: CameraMode;
   color: string;
   avatar: AvatarConfig | null;
@@ -501,13 +513,23 @@ function Controller({
       rotatingCamera.current = false;
     };
     const pointerDown = (event: PointerEvent) => {
-      if (event.button !== 2 || modeRef.current !== "third") return;
+      if (
+        event.button !== 2 ||
+        modeRef.current !== "third" ||
+        isometricPrototype
+      )
+        return;
       event.preventDefault();
       rotatingCamera.current = true;
       dom.setPointerCapture?.(event.pointerId);
     };
     const pointerMove = (event: PointerEvent) => {
-      if (!rotatingCamera.current || modeRef.current !== "third") return;
+      if (
+        !rotatingCamera.current ||
+        modeRef.current !== "third" ||
+        isometricPrototype
+      )
+        return;
       event.preventDefault();
       cameraYaw.current -= event.movementX * sensitivity;
       cameraPitch.current = THREE.MathUtils.clamp(
@@ -540,8 +562,9 @@ function Controller({
       window.removeEventListener("blur", stopRotating);
       dom.removeEventListener("contextmenu", contextMenu);
     };
-  }, [gl.domElement]);
+  }, [gl.domElement, isometricPrototype]);
   useFrame((_, delta) => {
+    if (isometricPrototype && !networkSpawn) return;
     const dt = Math.min(delta, 0.05);
     const k = keys.current;
     let inputX =
@@ -552,7 +575,7 @@ function Controller({
       Number(k.has("w") || k.has("arrowup"));
     let dx = inputX;
     let dz = inputZ;
-    if (mode === "third") {
+    if (mode === "third" || isometricPrototype) {
       camera.getWorldDirection(cameraForward);
       cameraForward.y = 0;
       cameraForward.normalize();
@@ -593,7 +616,7 @@ function Controller({
     }
     const p = local.current;
     target.set(p.x, 1.1, p.z);
-    if (mode === "third") {
+    if (mode === "third" && !isometricPrototype) {
       focus.lerp(target, 1 - Math.exp(-4.1 * dt));
       const horizontalDistance = 5.7 * Math.cos(cameraPitch.current);
       desired.set(
@@ -627,7 +650,11 @@ function Controller({
       <group ref={model} name="local-player" position={[0, 0, 5]}>
         <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
       </group>
-      <SimsCamera active={mode === "iso"} positionRef={local} />
+      <SimsCamera
+        active={mode === "iso" && !isometricPrototype}
+        positionRef={local}
+      />
+      <IsoCamera active={isometricPrototype} positionRef={local} />
     </>
   );
 }
@@ -646,6 +673,7 @@ function MovingAvatar({
   return <AvatarRenderer config={config} pose={pose} />;
 }
 export default function OfficeWorld({
+  isometricPrototype = false,
   mode,
   color,
   avatar,
@@ -677,9 +705,14 @@ export default function OfficeWorld({
       <color attach="background" args={["#0b151d"]} />
       <OfficeEnvironment />
       {players.map((p) => (
-        <RemoteAvatar key={p.sessionId} player={p} />
+        <RemoteAvatar
+          key={p.sessionId}
+          player={p}
+          showLabel={!isometricPrototype}
+        />
       ))}
       <Controller
+        isometricPrototype={isometricPrototype}
         mode={mode}
         color={color}
         avatar={avatar}
