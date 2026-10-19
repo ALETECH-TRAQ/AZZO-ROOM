@@ -466,8 +466,8 @@ export default function OfficeApp({ demoEnabled }: { demoEnabled: boolean }) {
             </button>
           ) : (
             <p className="muted">
-              Protótipo de câmera e controles. Cenário e avatares 3D
-              provisórios; arte 2D ainda não integrada.
+              Câmera e avatares 2D em oito direções. O perfil de cabelo, roupa e
+              acessórios continua sincronizado e será aplicado por camadas.
             </p>
           )}
         </div>

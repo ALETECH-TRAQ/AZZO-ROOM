@@ -36,6 +36,9 @@ async function probe(page: Page) {
                   zoom: camera.zoom,
                   player: player.position.toArray(),
                   camera: camera.position.toArray(),
+                  sprite: Boolean(
+                    scene.getObjectByName("isometric-sprite-avatar"),
+                  ),
                   projected: target.project(camera).toArray(),
                   right: camera.matrixWorld.elements.slice(0, 3),
                   up: camera.matrixWorld.elements.slice(4, 7),
@@ -69,6 +72,7 @@ test("orthographic opt-in: screen directions, follow, zoom, resize, reload and r
   await page.goto("/app?demo=1&view=isometric");
   await expect(page.locator(".pill.online")).toHaveText("Online");
   await expect.poll(async () => (await frame(page))?.ortho).toBe(true);
+  await expect.poll(async () => (await frame(page))?.sprite).toBe(true);
   const initial = await frame(page);
   for (const [key, x, y] of [
     ["w", 0, 1],

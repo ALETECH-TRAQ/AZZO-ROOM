@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { CameraMode, OnlinePlayer, Position } from "@/lib/types";
 import AvatarRenderer, { type Pose } from "./avatar/AvatarRenderer";
+import IsometricSpriteAvatar from "./avatar/IsometricSpriteAvatar";
 import { defaultAvatar, type AvatarConfig, collides } from "@azzo/avatar";
 import { MEETING_CENTER } from "@/lib/types";
 import SimsCamera from "./SimsCamera";
@@ -341,9 +342,11 @@ function OfficeEnvironment() {
 function RemoteAvatar({
   player,
   showLabel = true,
+  isometricPrototype = false,
 }: {
   player: OnlinePlayer;
   showLabel?: boolean;
+  isometricPrototype?: boolean;
 }) {
   const ref = useRef<THREE.Group>(null);
   // Stable JSX position prevents network renders from bypassing interpolation.
@@ -394,10 +397,18 @@ function RemoteAvatar({
       }}
       position={initialPosition}
     >
-      <AvatarRenderer
-        config={player.avatar || defaultAvatar}
-        pose={(player.animation || "idle") as Pose}
-      />
+      {isometricPrototype ? (
+        <IsometricSpriteAvatar
+          config={player.avatar || defaultAvatar}
+          yaw={player.yaw}
+          pose={(player.animation || "idle") as Pose}
+        />
+      ) : (
+        <AvatarRenderer
+          config={player.avatar || defaultAvatar}
+          pose={(player.animation || "idle") as Pose}
+        />
+      )}
       {showLabel && (
         <Html
           position={[0, 2.8, 0]}
@@ -648,7 +659,11 @@ function Controller({
   return (
     <>
       <group ref={model} name="local-player" position={[0, 0, 5]}>
-        <MovingAvatar config={avatar || defaultAvatar} positionRef={local} />
+        <MovingAvatar
+          config={avatar || defaultAvatar}
+          positionRef={local}
+          isometricPrototype={isometricPrototype}
+        />
       </group>
       <SimsCamera
         active={mode === "iso" && !isometricPrototype}
@@ -661,16 +676,26 @@ function Controller({
 function MovingAvatar({
   config,
   positionRef,
+  isometricPrototype = false,
 }: {
   config: AvatarConfig;
   positionRef: React.RefObject<Position>;
+  isometricPrototype?: boolean;
 }) {
   const [pose, setPose] = useState<Pose>("idle");
   useFrame(() => {
     const p = (positionRef.current.animation || "idle") as Pose;
     setPose((v) => (v === p ? v : p));
   });
-  return <AvatarRenderer config={config} pose={pose} />;
+  return isometricPrototype ? (
+    <IsometricSpriteAvatar
+      config={config}
+      yaw={positionRef.current.yaw}
+      pose={pose}
+    />
+  ) : (
+    <AvatarRenderer config={config} pose={pose} />
+  );
 }
 export default function OfficeWorld({
   isometricPrototype = false,
@@ -709,6 +734,7 @@ export default function OfficeWorld({
           key={p.sessionId}
           player={p}
           showLabel={!isometricPrototype}
+          isometricPrototype={isometricPrototype}
         />
       ))}
       <Controller
